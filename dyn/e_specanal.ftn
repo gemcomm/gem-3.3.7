@@ -34,6 +34,10 @@
 * v3_31 - Lee V.            - add for Schm_offline_L, correction of resolution
 *                      in creation of low res grid  (pick centre pt for dx)
 * v3_32 - Lee V.            - correction for new LAM i/o using unnormalized Hyb.
+* v3_38 - Lee V.            - correction for 3DF/BCS pilot files:
+*                             define xpxu to be NIA long, ypxv to be NJA long,
+*                             and ygv to be NJA long
+*
 *
 #include "e_anal.cdk"
 #include "e_fu.cdk"
@@ -499,21 +503,23 @@
                   enddo
           endif
 * create U,V target grid
-          allocate(xpxu(nia-1))
-          do i=1,nia-2
+          allocate(xpxu(nia))
+          do i=1,nia-1
              xpxu(i)= 0.5 * ( xpx(i) + xpx(i+1) )
           enddo
-          xpxu(nia-1) = ( xpx(nia-1) + xpx(nia) )
-          allocate(ypxv(nja-1))
-          do i=1,nja-2
+          allocate(ypxv(nja))
+          do i=1,nja-1
              ypxv(i)= 0.5 * ( ypx(i) + ypx(i+1) )
           enddo
-          ypxv(nja-1) = ( ypx(nja-1) + ypx(nja) )
+* add definition of last point which extends dx after xpxu(nia-1)
+          xpxu(nia) = xpxu(nia-1) + (xpx(nia) - xpx(nia-1) )
+* add definition of last point which extends dy after xpxu(nia-1)
+          ypxv(nja) = ypxv(nja-1) + ( ypx(nja) - ypx(nja-1) )
 
           if (e_ac_posi(xpx,ypx,nia,nja,Pil_hblen+Pil_pil,Pil_bcs_hollow_L).eq.0) then
 
-              call hpalloc(paygv_8   ,  (nja-1)*2, err,1)
-              do j=1,nja-1
+              call hpalloc(paygv_8   ,  (nja)*2, err,1)
+              do j=1,nja
                  ygv_8(j)  = ypxv(j) * deg2rad_8
               enddo
               call genab ( pia, pibb, levm, ptopa, rcoefa, LV)

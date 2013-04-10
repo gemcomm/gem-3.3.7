@@ -1,0 +1,70 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r  polar_z_filter - apply 2 delat z filter on field V2dzd_pole_n points along poles.
+#include "model_macros_f.h"
+*
+      subroutine polar_z_filter(F_f,DIST_DIM,F_nk)
+*
+      implicit none
+*
+      integer :: DIST_DIM,F_nk
+      real :: F_f(DIST_SHAPE,F_nk)
+*
+*author
+*     Andre Plante and Claude Girard june 2012.
+*
+#include "glb_ld.cdk"
+#include "ptopo.cdk"
+#include "v2dzd.cdk"
+*
+      integer :: i,j,k
+      real :: work(DIST_SHAPE,F_nk),mask(l_nj)
+*
+      if(v2dzd_pole_n.le.0)return
+      if(v2dzd_pole_fact.le.0.)return
+      if(G_lam)return
+*
+      if(v2dzd_pole_n.gt.l_nj)then
+         if(Ptopo_myproc.eq.0)print*,'Subdomain too small to apply polar 2 delat z diffusion'
+         if(Ptopo_myproc.eq.0)print*,'Subdomain should have at least',v2dzd_pole_n,' points, but has only ',l_nj
+         call gem_stop('polar_z_filter',-1)
+      endif
+      mask=0.
+*     South pole
+      if(Ptopo_myrow.eq.0)mask(1:v2dzd_pole_n)=1.
+*     North pole
+      if(Ptopo_myrow.eq.Ptopo_npey-1)mask(l_nj-v2dzd_pole_n+1:l_nj)=1.
+*
+!$omp do         
+         do k=2,F_nk-1               
+            do j=1,l_nj            
+            do i=1,l_ni
+               work(i,j,k)=.25d0*(F_f(i,j,k+1)+F_f(i,j,k-1)-2.d0*F_f(i,j,k))
+            enddo
+            enddo
+         enddo
+!$omp enddo
+!$omp do         
+         do k=2,F_nk-1               
+            do j=1,l_nj            
+            do i=1,l_ni
+               F_f(i,j,k)=F_f(i,j,k)+V2dzd_pole_fact*mask(j)*work(i,j,k)
+            enddo
+            enddo
+         enddo
+!$omp enddo
+         return
+         end

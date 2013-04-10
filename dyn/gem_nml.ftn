@@ -224,6 +224,9 @@
       Vtopo_start = -1
       Vtopo_ndt = 0
 *
+      V2dzd_pole_n=-1
+      V2dzd_pole_fact=1.
+*
       Tr3d_ntr = 0
 *
       P_fcpkuo_xofset  = Grd_left
@@ -319,6 +322,14 @@
 *
       endif
 *
+      if(V2dzd_pole_n.gt.0.and.V2dzd_pole_fact.gt.0.)then
+         if(V2dzd_pole_fact.gt.1.)then
+            write(Lun_out,9700)V2dzd_pole_fact
+            return
+         endif
+         write(Lun_out,9600)V2dzd_pole_n,V2dzd_pole_fact
+      endif
+*
 *     Check for valid back-trajectory interpolation scheme
 *
       call low2up  (Adw_interp_type_S,dumc_S)
@@ -364,6 +375,10 @@
  9500 format (/,' INVALID back-trajectory interpolator'/
      $         '      (Adw_interp_type = ',a,').  Valid interpolator'/
      $         '      types are "lagrangian", "truncated", "cubic".')
+ 9600 format (/,' Vertical 2 delta Z filter applied for',i4,
+     $          ' points near the poles with a factor ',f5.1)
+ 9700 format (/,' Vertical 2 delta Z filter factor V2dzd_pole_fact'
+     $          ' must be equal or less than 1.0, got: ',f5.1)
 *
 *-------------------------------------------------------------------
 *
