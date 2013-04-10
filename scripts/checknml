@@ -1,0 +1,31 @@
+#!/bin/ksh
+#
+set +x
+#====> Obtaining the arguments:
+eval `cclargs_lite $0 \
+      -help     "0"    "1"   "[help                     ]"\
+  ++ $*`
+#
+if ((help)) then
+    echo file "gem_settings.nml" must be at the current directory
+    echo example: checknml [namelist name]
+    echo example: checknml gem_cfgs
+elif [ $1 ] ;then
+   awk -v NAMELIST="$1" -f $gem/scripts/getnml $gem/scripts/dict.nml | sort > $TMPDIR/model_list
+   echo " " >> $TMPDIR/model_list
+   awk -v NAMELIST="$1" -f $gem/scripts/getnml gem_settings.nml | sort > $TMPDIR/your_list
+   echo " " >> $TMPDIR/your_list
+   if [ $HOSTTYPE = AIX ] ; then
+    sdiff $TMPDIR/model_list $TMPDIR/your_list
+   elif [ $HOSTTYPE = IRIX5 ] ; then
+    mgdiff $TMPDIR/model_list $TMPDIR/your_list
+   else 
+    xxdiff $TMPDIR/model_list $TMPDIR/your_list
+   fi
+   rm $TMPDIR/model_list
+   rm $TMPDIR/your_list
+else
+    echo file "gem_settings.nml" must be at the current directory
+    echo example: checknml [namelist name]
+    echo example: checknml gem_cfgs
+fi

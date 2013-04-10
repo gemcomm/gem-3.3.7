@@ -1,0 +1,126 @@
+#!/bin/ksh
+#
+if [ ! ${MODEL} -o ! ${MODEL_VERSION} ] ;then
+  echo "\n Model environment not set properly --- ABORT ---\n" ; exit 1
+fi
+arguments=$*
+#
+ici=${PWD} ; REPCFG=${PWD}
+if [ $1 ] ; then
+  cd $1 2> /dev/null
+  if [ $? -eq 0 ] ; then
+    REPCFG=${PWD}
+  else
+    echo "\n Directory $1 is unavailable --- ABORT ---\n"
+    exit
+  fi
+  cd ${ici}
+fi
+ledotfile=${REPCFG}/configexp.dot.cfg
+if [ -f ${ledotfile} ] ; then
+  . ${ledotfile}
+fi
+ledotfile=${REPCFG}/configexp_drive.cfg
+#
+. r.entry.dot
+#
+eval `cclargs_lite -D " " $0 \
+\
+ -BACKEND_mach       "${BACKEND_mach}"            ""      "[Backend machine name                ]" \
+ -BACKEND_time_ntr   "${BACKEND_time_ntr:-600}"   "600"   "[Job resources: gemntr wallclock time]" \
+ -BACKEND_time_mod   "${BACKEND_time_mod:-3600}"  "3600"  "[Job resources: gemdm  wallclock time]" \
+ -BACKEND_cm         "${BACKEND_cm:-10G}"         "10G"   "[Job resources: gemdm  memory size   ]" \
+ -BACKEND_OMP        "${BACKEND_OMP:-1}"          "1"     "[Job resources: gemdm OMP_NUM_THREADS]" \
+ -BACKEND_SMT        "${BACKEND_SMT:-1}"          "1"     "[Job resources: gemdm use smt feature]" \
+ -BACKEND_execdir    "${BACKEND_execdir}"         ""      "[Working directory                   ]" \
+ -BACKEND_listings   "${BACKEND_listings:-${HOME}/listings}" "" "[Directory for job listings    ]" \
+ -BACKEND_class      "${BACKEND_class}"           ""      "[to control -cl option with soumet   ]" \
+ -BACKEND_nosubmit   "${BACKEND_nosubmit:-0}"     "1"     "[to issu -nosubmit option with soumet]" \
+\
+ -UM_EXEC_exp        "${UM_EXEC_exp:-dbg1}"     "dbg1"  "[Current experiment name                    ]" \
+ -UM_EXEC_anal       "${UM_EXEC_anal}"          ""      "[Full path of the analysis                  ]" \
+ -UM_EXEC_inrep      "${UM_EXEC_inrep}"         ""      "[Full path of INIT & BCS for LAM            ]" \
+ -UM_EXEC_lam_init   "${UM_EXEC_lam_init}"      ""      "[Full path of INIT data for LAM_casc        ]" \
+ -UM_EXEC_lam_bcs    "${UM_EXEC_lam_bcs}"       ""      "[Full path of BCS data for LAM_casc         ]" \
+ -UM_EXEC_ovbin      "${UM_EXEC_ovbin}"         ""      "[Full path of main model executables        ]" \
+ -UM_EXEC_binops     "${UM_EXEC_binops}"        ""      "[Name of specific operational application   ]" \
+ -UM_EXEC_climato    "${UM_EXEC_climato}"       ""      "[Full path of climatology file              ]" \
+ -UM_EXEC_geophy     "${UM_EXEC_geophy}"        ""      "[Full path of geophysical file              ]" \
+ -UM_EXEC_geophy_m   "${UM_EXEC_geophy_m}"      ""      "[Full path of geophysical files for LAM_casc]" \
+ -UM_EXEC_ozone      "${UM_EXEC_ozone}"         ""      "[Full path of climatology ozone file        ]" \
+ -UM_EXEC_irtab      "${UM_EXEC_irtab}"         ""      "[Full path of radiation table file          ]" \
+ -UM_EXEC_constantes "${UM_EXEC_constantes}"    ""      "[Full path of geophysical constantes file   ]" \
+ -UM_EXEC_r_ent      "${UM_EXEC_r_ent:-1}"      "0"     "[To run GEMNTR                              ]" \
+ -UM_EXEC_r_mod      "${UM_EXEC_r_mod:-1}"      "0"     "[To run GEMDM                               ]" \
+ -UM_EXEC_d2z        "${UM_EXEC_d2z:-0}"        "1"     "[To re-assemble output files                ]" \
+ -UM_EXEC_xfer       "${UM_EXEC_xfer}"          ""      "[WS:full-path-dir on which to scp results   ]" \
+ -UM_EXEC_xferl      "${UM_EXEC_xferl:-0}"      "1"     "[Transfer listings along with model output  ]" \
+ -UM_EXEC_casc       "${UM_EXEC_casc:-1}"       "0"     "[Transfer sub-dir casc for LAM_casc         ]" \
+ -UM_EXEC_prefix     "${UM_EXEC_prefix}"        ""      "[Prefix for output filenames                ]" \
+ -UM_EXEC_dplusp     "${UM_EXEC_dplusp:-0}"     "1"     "[To assemble dynamics and physics output    ]" \
+ -UM_EXEC_headscript "${UM_EXEC_headscript}"    ""      "[Script to execute before GEMNTR            ]" \
+ -UM_EXEC_tailjob_M  "${UM_EXEC_tailjob_M}"     ""      "[Job to launch after Um_runmod.ksh          ]" \
+ -UM_EXEC_tailjob_X  "${UM_EXEC_tailjob_X}"     ""      "[Job to launch after Um_output_xfer.ksh     ]" \
+ -UM_EXEC_xchgdir    "${UM_EXEC_xchgdir}"       ""      "[Exchange directory for coupling            ]" \
+ -UM_EXEC_cmclog     "${UM_EXEC_cmclog}"        ""      "[Full path for CMC log file                 ]" \
+ -UM_EXEC_barrier    "${UM_EXEC_barrier:-0}"    "1"     "[Third party job (SM) will run the model    ]" \
+ -UM_EXEC_manoutp    "${UM_EXEC_manoutp:-1}"    "1"     "[Model output management by Um_runmod       ]" \
+ -UM_EXEC_nmlcpl     "${UM_EXEC_nmlcpl}"        ""      "[Shared namcouple file btw cpl components   ]" \
+ -UM_EXEC_timing     "${UM_EXEC_timing}"        ""      "[AIX HPM timing info                        ]" \
+\
+ -liste      "0"         "1"    "[List available OPS configs]" \
+ -restart    "0"         "1"    "[Restart mode              ]" \
+ -_job       ""          ""     "[OUTPUT: jobname           ]" \
+ -_listing   ""          ""     "[OUTPUT: listing directory ]" \
+ -_npex      "0"         "0"    "[OUTPUT: # of cpus along x ]" \
+ -_npey      "0"         "0"    "[OUTPUT: # of cpus along y ]" \
+ -_npeOMP    "0"         "0"    "[OUTPUT: # of OpenMP cpus  ]" \
+ ++ $arguments`
+#
+cat > ${ledotfile} <<EOF
+BACKEND_mach=$BACKEND_mach
+BACKEND_time_ntr=$BACKEND_time_ntr
+BACKEND_time_mod=$BACKEND_time_mod
+BACKEND_cm=$BACKEND_cm
+BACKEND_OMP=$BACKEND_OMP
+BACKEND_SMT=$BACKEND_SMT
+BACKEND_execdir=$BACKEND_execdir
+BACKEND_listings=$BACKEND_listings
+BACKEND_class=$BACKEND_class
+BACKEND_nosubmit=$BACKEND_nosubmit
+
+UM_EXEC_exp=$UM_EXEC_exp
+UM_EXEC_anal=$UM_EXEC_anal
+UM_EXEC_inrep=$UM_EXEC_inrep
+UM_EXEC_ovbin=$UM_EXEC_ovbin
+UM_EXEC_binops=$UM_EXEC_binops
+UM_EXEC_headscript=$UM_EXEC_headscript
+UM_EXEC_climato=$UM_EXEC_climato
+UM_EXEC_geophy=$UM_EXEC_geophy
+UM_EXEC_d2z=$UM_EXEC_d2z
+UM_EXEC_xfer=$UM_EXEC_xfer
+UM_EXEC_xferl=$UM_EXEC_xferl
+UM_EXEC_casc=$UM_EXEC_casc
+UM_EXEC_prefix=$UM_EXEC_prefix
+UM_EXEC_dplusp=$UM_EXEC_dplusp
+UM_EXEC_tailjob_M=$UM_EXEC_tailjob_M
+UM_EXEC_tailjob_X=$UM_EXEC_tailjob_X
+UM_EXEC_xchgdir=$UM_EXEC_xchgdir
+UM_EXEC_r_ent=$UM_EXEC_r_ent
+UM_EXEC_r_mod=$UM_EXEC_r_mod
+UM_EXEC_lam_init=$UM_EXEC_lam_init
+UM_EXEC_lam_bcs=$UM_EXEC_lam_bcs
+UM_EXEC_geophy_m=$UM_EXEC_geophy_m
+UM_EXEC_ozone=$UM_EXEC_ozone
+UM_EXEC_irtab=$UM_EXEC_irtab
+UM_EXEC_constantes=$UM_EXEC_constantes
+UM_EXEC_cmclog=$UM_EXEC_cmclog
+UM_EXEC_barrier=$UM_EXEC_barrier
+UM_EXEC_manoutp=$UM_EXEC_manoutp
+UM_EXEC_nmlcpl=$UM_EXEC_nmlcpl
+UM_EXEC_timing=$UM_EXEC_timing
+EOF
+
+. r.call.dot Um_drive.ksh $REPCFG -liste $liste -restart $restart -job ${_job}
+
+. r.return.dot

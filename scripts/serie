@@ -1,0 +1,368 @@
+#! /bin/sh
+eval `cclargs $0  \
+              -point   "1,2,3" ",,,,"      "[Point pour lequel on veut tracer les graphiques]"      \
+              -npoint  "3"             "[Nombre de points pour lesquels\nles series ont ete extraites]"  \
+              -debut   "=-1"           "[Heure du debut de la periode affichee]" \
+              -fin     "=-1"           "[Heure de la fin de la periode affichee]"   \
+              -menu_   "menugewex"     "[Menu contenant les directives pour \nproduire les graphiques]"  \
+              -dest_   "ecran"  "v200" "[Destination des graphiques:\necran,v200,v80,laser,qms,calcomp]" \
+              ++ $*`
+#
+ici=`pwd`
+#
+nom=testseri
+metanom=${nom}.met
+les_fichiers=$ici/zmc2.seri
+#
+fichier=pastemp_seri
+/bin/rm -f $fichier
+cat ${les_fichiers}_* > les_seritotal
+#cat << eof | ssh robert bash --login
+echo -iserial `pwd`/les_seritotal -omsorti `pwd`/$fichier
+$ARMNLIB/modeles/phy/bin/feseri32_360 -iserial `pwd`/les_seritotal -omsorti `pwd`/$fichier
+#eof
+/bin/rm -f les_seritotal
+#
+ici=`pwd`
+NOM=`echo ${nom} | tr "[a-z]" "[A-Z]"`
+dir_pastemp=pastemp$$
+#
+if [ ${menu} = "menugewex" ]
+then
+cat >${dir_pastemp} <<FIN.DE.MENUGEWEX
+C
+C     DIRECTIVES DE PASTEMP POUR SERIES (N. BRUNET)
+C
+C  GROUPE DE DIRECTIVES POUR LES TITRES
+ GROUPE(1,['CA',4,'SI',480,'IN',2])
+C  GROUPE DE DIRECTIVES POUR LES LEGENDES ET L'ETIQUETAGE DES AXES
+ GROUPE(2,['CA',0,'IN',2,'SI',450,'CO',1,'CN',01])
+C  GROUPE DE DIRECTIVES POUR LES FLUX ET PROFILS
+ GROUPE(3,['CA',0,'SI',250,'IN',1,'CO',1,'TH',1])
+C  GROUPE DE DIRECTIVES POUR LES COURBES DE COUCHE LIMITE ET DE PRECIP.
+ GROUPE(4,['CA',0,'SI',400,'IN',1,'TH',4])
+C  GROUPE DE DIRECTIVES POUR LES LIGNES ET LABELS DES GRAPHIQUES GENERAUX
+ GROUPE(5,['CA',0,'TH',1,'SI',400,'CO',1])
+ ISPSET('MAJR',5)
+ ISPSET('OFFM',1)
+C  GROUPE DE DIRECTIVES POUR POINTER SUR LA CARTE
+ GROUPE(6,['CA',0,'IN',1,'SI',350])
+C  GROUPE DE DIRECTIVES POUR LES COMMENTAIRES
+ GROUPE(7,['CA',1,'IN',2,'SI',450,'CN',02,'SL',-20])
+C
+C
+C
+ GLEGEND=2
+ GLABEL=2
+ ETIKET(1,'${NOM}')
+ POINT([${point}])
+ PERIODE=${debut},${fin}
+ CARTE(${npoint},1,[NORD],6)
+ TRACECL()
+C
+ ETIKETAX([TS],['K?'])
+ ETIKETAX([F2],['M?'])
+ ETIKETAX([P0,FQ],['P@1A?'])
+ ETIKETAX([SE],['NIVEAUX SIGMA?'])
+ ETIKETAX([FV,FC,FL,FS,FI,SI,EI,EV,NR,IV],['W/M2?'])
+ ETIKETAX([VE],['M/S?'])
+ ETIKETAX([RC,RR],['MM/HOUR?'])
+ ETIKETAX([RN,PC],['MM?'])
+ ETIKETAX([AP,NT,WS],['FRACTION?'])
+C
+ SETMAD([RC,RR],3600.E3,0.0)
+ SETMAD([TA,TF,TK,TI,T2,TU,TV,GU,GV],86400.,0.0)
+ SETMAD([QA,QF,QK],-216.E6,0.0)
+ SETMAD([HU],1.0E3,0.0)
+ SETMAD([RN],1.0E3,0.0)
+ SETMAD([PC],1.0E3,0.0)
+ SETMAD([QC],1.0E5,0.0)
+C
+C
+ TITRE(['WATER VAPOUR FLUX LOST TO THE ATMOS.?'],1)
+ SERIE([FV],[-1.],[FR],3)
+C
+ TITRE(['SENSIBLE HEAT FLUX LOST TO THE ATMOS.?'],1)
+ SERIE([FC],[-1.],[FR],3)
+C
+ TITRE(['HEAT FLUX IN THE GROUND?'],1)
+ SERIE([FL],[-1.],[FR],3)
+C
+ TITRE(['SOLAR RAD. FLUX ABSORBED BY THE GROUND?'],1)
+ SERIE([FS],[-1.],[FR],3)
+C
+ TITRE(['IR RADIATION ABSORBED BY THE GROUND?'],1)
+ SERIE([FI],[-1.],[FR],3)
+C
+ TITRE(['NET BALANCE OF IR RAD. AT THE SURFACE?'],1)
+ SERIE([SI],[-1.],[FR],3)
+C
+ TITRE(['OUTGOING IR RAD. FLUX AT THE TOA?'],1)
+ SERIE([EI],[-1.],[FR],3)
+C
+ TITRE(['OUTGOING VISIBLE RAD. FLUX AT THE TOA?'],1)
+ SERIE([EV],[-1.],[FR],3)
+C
+ TITRE(['2-D CLOUD COVER?'],1)
+ SERIE([NT],[-1.],[FR],3)
+C
+ TITRE(['PLANETARY ALBEDO?'],1)
+ SERIE([AP],[-1.],[FR],3)
+C
+ TITRE(['SURFACE TEMPERATURE?'],1)
+ SERIE([TS],[-1.],[FR],3)
+C
+ TITRE(['SURFACE SOIL MOISTURE?'],1)
+ SERIE([WS],[-1.],[FR],3)
+C
+ TITRE(['SURFACE PRESSURE?'],1)
+ SERIE([P0],[-1.],[FR],3)
+C
+ TITRE(['MOMENTUM FLUX AT THE SURFACE?'],1)
+ SERIE([FQ],[-1.],[FR],3)
+C
+ TITRE(['BOUNDARY LAYER THICKNESS?'],1)
+ SERIE([F2],[-1.],[FR],3)
+C
+ TITRE(['TOP OF BOUNDARY LAYER?'],1)
+ VRTBASE(1.0,0.6,4,1,'(F4.1)',4)
+ SERIE([SE],[-1.],[FR],3)
+C
+C DESACTIVER LA DIRECTIVE "VRTBASE" PRECEDENTE
+ VRTBASE()
+C
+ TITRE(['CONVECTIVE PRECIPITATION RATE?'],1)
+ SERIE([RC],[-1.],[FR],3)
+C
+ TITRE(['STRATIFORM PRECIPITATION RATE?'],1)
+ SERIE([RR],[-1.],[FR],3)
+C
+ TITRE(['SURFACE WIND?'],1)
+ SERIE([VE],[-1.],[FR],3)
+C
+ TITRE(['NET RADIATION BUDGET OF THE ATMOSPHERE?'],1)
+ SERIE([NR],[-1.],[FR],3)
+C
+ TITRE(['INCOMING SOLAR RADIATION AT THE TOA?'],1)
+ SERIE([IV],[-1.],[FR],3)
+C
+ TITRE(['ZONAL WIND (M/S)?'],1)
+ RANGE=-100.,100.,2.0
+ COMMENT(['@JCONTOUR INTERVAL@0: 2.0?'],7,0.10,0.15)
+ COUPE([UU],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['MERIDIONAL WIND (M/S)?'],1)
+ RANGE=-100.,100.,2.0
+ COMMENT(['@JCONTOUR INTERVAL@0: 2.0?'],7,0.10,0.15)
+ COUPE([VV],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['VERTICAL MOTION (PA/S)?'],1)
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.1?'],7,0.10,0.15)
+ RANGE=-100.,100.,0.1
+ COUPE([WW],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['TEMPERATURE (K)?'],1)
+ RANGE=0.,350.,5.
+ COMMENT(['@JCONTOUR INTERVAL@0: 5.0?'],7,0.10,0.15)
+ COUPE([TT],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['POTENTIAL TEMPERATURE (K)?'],1)
+ RANGE=0.,350.,5.
+ COMMENT(['@JCONTOUR INTERVAL@0: 5.0?'],7,0.10,0.15)
+ COUPE([TH],[0.6,1.0],[NI,FR],0)
+C
+ TITRE(['THETA W (K)?'],1)
+ RANGE=0.,350.,5.
+ COMMENT(['@JCONTOUR INTERVAL@0: 5.0?'],7,0.10,0.15)
+ COUPE([TW],[0.6,1.0],[NI,FR],0)
+C
+ TITRE(['SPECIFIC HUMIDITY (G/KG)?'],1)
+ RANGE=999.
+ CONTOUR=0.5,1.,2.5,5.,7.5,10.,12.5,15.,20.
+ COMMENT(['@JCONTOUR LEVELS@0: 0.5,1.,2.5,5.,7.5,10.,12.5,15.,20?'],7,0.10,0.15)
+ COUPE([HU],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['GEOPOTENTIAL HEIGHT (M)?'],1)
+ COUPE([GZ],[0.0,1.0],[FR],0)
+C
+ TITRE(['3-D CLOUD FRACTION?'],1)
+ RANGE=0.,1.,0.1
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.1?'],7,0.10,0.15)
+ COUPE([NU],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['CONVECTIVE CLOUD FRACTION?'],1)
+ RANGE=0.,1.,0.1
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.1?'],7,0.10,0.15)
+ COUPE([NC],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['STRATIFORM CLOUD FRACTION?'],1)
+ RANGE=0.,1.,0.1
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.1?'],7,0.10,0.15)
+ COUPE([NS],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['HEATING RATE DUE TO SOLAR RADIATION?'],1)
+ RANGE=-10.,10.,0.5
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.5?'],7,0.10,0.15)
+ COUPE([T2],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['HEATING RATE DUE TO IR RADIATION (K/DAY)?'],1)
+ RANGE=-10.,10.,0.5
+ COMMENT(['@JCONTOUR INTERVAL@0: 0.5?'],7,0.10,0.15)
+ COUPE([TI],[0.0,1.0],[NI,FR],0)
+C
+C Cette directive annule l'effet des directives "RANGE"
+C precedentes, qui ont priorite sur les directives "CONTOUR".
+ RANGE=999.
+C
+ TITRE(['HEATING RATE DUE TO CONVECTION (K/DAY)?'],1)
+ CONTOUR=-150.,-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.,150.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.,150.?'],7,0.10,0.15)
+ COUPE([TK],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['HEATING RATE DUE TO CONVECT./CONDENS.?'],1)
+ RANGE=999.
+ CONTOUR=-150.,-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.,150.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.,150.?'],7,0.10,0.15)
+ COUPE([TA],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['HEATING RATE DUE TO VERTICAL DIFFUSION?'],1)
+ RANGE=999.
+ CONTOUR=-150.,-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.,150.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.,150.?'],7,0.10,0.15)
+ COUPE([TF],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['MOISTENING DUE TO CONVECTION (K/DAY) ?'],1)
+ RANGE=999.
+ CONTOUR=-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.?'],7,0.10,0.15)
+ COUPE([QK],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['MOISTENING DUE TO CONVECT./CONDENS.?'],1)
+ RANGE=999.
+ CONTOUR=-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.?'],7,0.10,0.15)
+ COUPE([QA],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['MOISTENING DUE TO VERTICAL DIFFUSION?'],1)
+ RANGE=999.
+ CONTOUR=-75.,-50.,-25.,-10.,-5.,0.,5.,10.,25.,50.,75.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 5.,10.,25.,50.,75.?'],7,0.10,0.15)
+ COUPE([QF],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['VERTICAL DIFFUSION TEND. OF U (M/S/DAY)?'],1)
+ RANGE=-200.,200.,10.
+ COMMENT(['@JCONTOUR INTERVAL@0: 10.0?'],7,0.10,0.15)
+ COUPE([TU],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['VERTICAL DIFFUSION TEND. OF V (M/S/DAY)?'],1)
+ RANGE=-200.,200.,10.
+ COMMENT(['@JCONTOUR INTERVAL@0: 10.0?'],7,0.10,0.15)
+ COUPE([TV],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['GRAVITY WAVE DRAG TEND. OF U (M/S/DAY)?'],1)
+ RANGE=999.
+ CONTOUR=-50.,-20.,-10.,-5.,-1.0,-0.5,0.,0.5,1.,5.,10.,20,50.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 0.5,1.,5.,10.,20,50.?'],7,0.10,0.15)
+ COUPE([GU],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['GRAVITY WAVE DRAG TEND. OF V (M/S/DAY)?'],1)
+ RANGE=999.
+ CONTOUR=-50.,-20.,-10.,-5.,-1.0,-0.5,0.,0.5,1.,5.,10.,20,50.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 0.5,1.,5.,10.,20,50.?'],7,0.10,0.15)
+ COUPE([GV],[0.0,1.0],[NI,FR],0)
+C
+CTITRE(['VERT. DIFFUS. COEFF. FOR MOMENTUM (M2/S)?'],1)
+CCOMMENT(['@JCONTOUR INTERVAL@0: 10.0?'],7,0.10,0.15)
+CRANGE=0.,10000.,10.0
+CCOUPE([KM],[0.0,1.0],[FR],0)
+C
+ TITRE(['VERT. DIFFUS. COEFF. FOR MOMENTUM (M2/S)?'],1)
+ RANGE=999.
+ CONTOUR=0.,10.,20.,50.,100.,250.,500.
+ COMMENT(['@JCONTOUR LEVELS@0: 0.,10.,20.,50.,100.,250.,500.?'],7,0.10,0.15)
+ COUPE([KM],[0.6,1.0],[NI,FR],0)
+C
+ TITRE(['VERTICAL DIFFUS. COEFF. FOR HEAT (M2/S)?'],1)
+ RANGE=999.
+ CONTOUR=0.,10.,20.,50.,100.,250.,500.
+ COMMENT(['@JCONTOUR LEVELS@0: 0.,10.,20.,50.,100.,250.,500.?'],7,0.10,0.15)
+ COUPE([KT],[0.0,1.0],[NI,FR],0)
+C
+ TITRE(['TURBULENT KINETIC ENERGY (M2/S2)?'],1)
+ RANGE=999.
+ CONTOUR=0.,0.2,1.,2.,5.,10.,25.,50.
+ COMMENT(['@JCONTOUR LEVELS@0: 0., +/- 0.2,1.,2.,5.,10.,25.,50.?'],7,0.10,0.15)
+ COUPE([EN],[0.0,1.0],[NI,FR],0)
+C
+CTITRE(['CLOUD WATER/ICE (10-2 G/KG)?'],1)
+CRANGE=0.,15.,2.0
+CCOMMENT(['@JCONTOUR INTERVAL@0: 2.0?'],7,0.10,0.15)
+CCOUPE([QC],[0.0,1.0],[NI,FR],0)
+C
+CTITRE(['LIQUID PRECIPITATION FLUX (SUNDQVIST)?'],1)
+CCOUPE([WF],[0.0,1.0],[FR],0)
+C
+CTITRE(['SOLID PRECIPITATION FLUX (SUNDQVIST)?'],1)
+CRANGE=999.
+CCOUPE([SF],[0.0,1.0],[FR],0)
+C
+ TITRE(['STRATIFORM PRECIPITATION ACCUMULATION?'],1)
+ SERIE([RN],[-1.],[FR],3)
+C 
+ TITRE(['CONVECTIVE PRECIPITATION ACCUMULATION?'],1)
+ SERIE([PC],[-1.],[FR],3)
+C 
+FIN.DE.MENUGEWEX
+#
+fi
+#
+echo
+echo 'Execution de PASTEMP en cours...'
+echo
+#
+#cat << eof | ssh alef bash --login
+cd $ici
+pastemp -i ${dir_pastemp} -imsert ${fichier}
+#eof
+#    
+mv metacod ${metanom}
+#
+if [ "${dest}" = "ecran" ]
+then
+   echo 'Le fichier de metacode porte le nom suivant :'
+   echo
+   echo ${metanom}
+   echo
+   echo
+   echo
+else
+   echo 'Execution de TRAMES en cours...'
+   echo
+   if [ "${dest}" = "v80" ]
+   then
+      trames -mc ${metanom} -device V80 -offset 10 -size 500 -space 500 -gr 2\
+             -colors '0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1'
+   elif [ "${dest}" = "v200" ]
+   then
+      trames -mc ${metanom} -device V200 -offset 00 -size 500 -space 500 -gr 4\
+             -orn ROT -colors '0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1'
+   elif [ "${dest}" = "qms" ]
+   then
+      trames -mc ${metanom} -device laser
+   else
+      trames -mc ${metanom} -device ${dest}
+   fi
+   grafv80 razz2 -device ${dest} -tname ${nom} > /dev/null
+   echo "Les graphiques seront imprimes sur l'unite ${dest}."
+   echo
+   echo
+   echo
+   \rm ${metanom} razz2 mon.out stc*
+fi
+#
+#
+# MENAGE
+#
+#
+/bin/rm -f ${dir_pastemp} $fichier
+#

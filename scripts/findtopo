@@ -1,0 +1,56 @@
+#!/bin/ksh
+#
+set +x
+#====> Obtaining the arguments:
+eval `cclargs_lite $0 \
+     -gni      "24"  "24"  "[Nb of points along any axis]"\
+     -min       "1"  "1"   "[min number of PE     to use]"\
+     -max       "1"  "1"   "[max number of PE     to use]"\
+     -help      "0"  "1"   "[help                       ]"\
+  ++ $*`
+#
+if ((help)) then
+echo ie: findtopo -gni $gni -min $min -max $max
+echo
+echo '-gni      "24"  "24"  "[Nb of points along any axis]"'
+echo '-min       "1"  "1"   "[min number of PE     to use]"'
+echo '-max       "1"  "1"   "[max number of PE     to use]"'
+echo
+exit
+fi
+let gtot=$gni
+if (($min < 1))
+then let min=1
+fi
+if (($min > $max))
+then let max=$min
+fi
+npe=$min
+echo 'findtopo -gni '$gni' -min '$min' -max '$max
+while true
+   do
+    if (($npe > $max))
+    then exit
+    fi
+    let val1=$gtot+$npe-1
+    let val1=$val1/$npe
+    let val3=$npe-1
+    let val3=$val3*$val1
+    let val2=$gtot-$val3
+    if (($val2 <= 0)) then
+#   echo 'npe= '$npe 'is NOT ok for gni='$gtot,' val2= '$val2
+    echo 'npe= '$npe 'is NOT ok for gni='$gni
+    else
+#   echo 'npe= '$npe 'is OK, val2= '$val2
+    echo 'npe= '$npe 'is OK for gni='$gni
+    fi
+#   let val4=$npe-1
+#   let val4=$val4*$val1
+#   let val4=$val4+1
+#   if (($val4 > $gtot)) then
+#   echo 'npe= '$npe 'is NOT ok, gtot= '$gtot,' val4= '$val4,'val2=',$val2
+#   else
+#   echo 'npe= '$npe 'is OK, val4= '$val4,'val2=',$val2
+#   fi
+    let npe=$npe+1
+   done

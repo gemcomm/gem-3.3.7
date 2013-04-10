@@ -1,0 +1,129 @@
+#!/bin/ksh -x
+#
+if [ ! ${MODEL} -o ! ${MODEL_VERSION} ] ; then
+  echo "\n Model environment not set properly --- ABORT ---\n" ; exit 1
+fi
+#
+eval `cclargs $0 \
+       -iref     "0"     "0"     "[i index of reference point]"\
+       -jref     "0"     "0"     "[j index of reference point]"\
+       -latr     "=-100" "=-100" "[true reference latitude]"\
+       -lonr     "=-400" "=-400" "[true reference longitude]"\
+       -outf     "tape1" "tape1" "[Output file name]"\
+       -genphysx   "0"     "1"     "[Produce geophysical fields with genphysx]"\
+       -xrec     "0"     "1"     "[Visualize grid with xrec]"\
+  ++ $*`
+#
+  GENGRID=gemgrid_${BASE_ARCH}_${MODEL_VERSION}.Abs
+  export EDITFST=editfst2000
+  export PGSM=pgsm2000
+
+#================== Model dependent variables ================
+settingsfile="gem_settings.nml"
+echo ${settingsfile}
+typeline="Grd_typ_S= 'LU'"
+namelistname="&grid"
+if [ "x$MODEL" = "xmc2" ]
+then
+    settingsfile="mc2_settings.nml"
+    typeline=" "
+    namelistname="&grille"
+fi
+
+#
+#================== Set Grid Parameters ================
+if [ ! -s $settingsfile ] ; then
+    cat > $settingsfile <<EOF
+ $namelistname
+  $typeline
+  Grd_ni  = 101 , Grd_nj  = 101
+  Grd_iref= 50 , Grd_jref= 50
+  Grd_latr= 46. , Grd_lonr= 91.
+  Grd_dx= .1,
+  Grd_proj_S= 'L' , Grd_phir= 22.5 , Grd_dgrw= 260.
+  Grd_xlat1= 0.,  Grd_xlon1=100.,Grd_xlat2= 0., Grd_xlon2=  190.
+ /
+EOF
+
+    cat <<EOF
+  ==================================================
+  PLEASE SET GRID PARAMETERS IN $settingsfile
+  and rerun script "grille" again.
+  ==================================================
+EOF
+exit 0
+else
+    cat <<EOF
+  ============================================================
+  GRID PARAMETERS READ FROM $settingsfile (namelist $namelistname)
+  ============================================================
+EOF
+fi
+
+#================== Unify settings file  ================
+cp model_settings.cfg model_settings.cfg_bk$$ 2>/dev/null
+
+if [ "x$MODEL" = "xmc2" ]
+then
+
+    cat > dir.dir$$ <<__EOF
+s/\&grille/\&grid/
+s/[gG]rd_proj_S/Grd_typ_S=\"LU\",Grd_proj_S/
+__EOF
+
+cat dir.dir$$
+
+cat $settingsfile | sed -f dir.dir$$  > model_settings.cfg
+/bin/rm -f dir.dir$$
+else
+cat $settingsfile> model_settings.cfg
+fi
+
+#================== Produce Grid Pos Rec ================
+/bin/rm -f tape1 $outf gfilemap.txt 2> /dev/null
+#
+$GENGRID
+#
+if [ X"$outf" != X"tape1" ] ; then
+  mv tape1 $outf
+fi
+
+/bin/rm -f model_settings.cfg
+mv model_settings.cfg_bk$$ model_settings.cfg 2>/dev/null
+
+#================== Visualise the grid ================
+if [ $xrec -eq 1 -a -s $outf ] ; then
+#
+  r.fstliste -izfst $outf -nomvar ">>" -etiket "GRDZ" | sed 's/\://g' > liste
+  export ip1=`cat liste | awk '{print $3}'`
+  export ip2=`cat liste | awk '{print $4}'`
+  export ip3=`cat liste | awk '{print $5}'`
+  /bin/rm -f liste
+#
+  cat > p1.dir <<pgsm100
+ sortie (std,1000)
+ compac=-24
+ grille (tape2,$ip1,$ip2,$ip3)
+*
+ heure(0)
+ outlalo(-1,-1,-1)
+*
+ setintx(cubique)
+ champ('ME')
+end
+pgsm100
+#
+  cp $outf tmp$$
+  $PGSM -iment /users/dor/armn/mid/data3/clim/glbclim -ozsrt tmp$$ -i p1.dir
+  /bin/rm -f p1.dir
+#
+  xrec5 -imflds tmp$$ ; /bin/rm -f tmp$$
+#
+fi
+#
+
+if [ $genphysx -gt 0 ] ; then
+    ls -al /data/dormrb04/genphysx/bin/genphysx
+    /data/dormrb04/genphysx/bin/genphysx -nml ${settingsfile}
+fi
+

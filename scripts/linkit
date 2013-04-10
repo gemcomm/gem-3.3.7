@@ -1,0 +1,57 @@
+#!/bin/ksh
+#
+if [ ! "$storage_model" ] ; then
+   if [ -d /usr/local/env/localmrb/armn/${USER} ] ; then
+      storage=/usr/local/env/localmrb/armn/${USER}
+   else
+      echo "\n Must define environment variable storage_model"
+      echo " (to store *.o *.Abs etc... on pollux) \n"
+      exit
+   fi
+else
+   storage=$storage_model
+fi
+ici=`true_path .`
+cd $storage 2> /dev/null
+if test $? != 0 ; then
+  echo "\n DIRECTORY $storage does not exist \n"
+  exit
+fi
+cd $ici
+storage=${storage}/`true_path . | awk 'BEGIN{FS="/"}{print $NF}'`
+#
+mkdir $storage 2> /dev/null
+new=`true_path $storage`
+if [ "$new" = "$ici" ]; then
+   same=1
+else
+   same=""
+fi
+#
+
+mkdir -p $storage/malib${EC_ARCH}
+
+if [ ! "$same" ]; then
+  if [ -n "$SETUP_KIND" ] ; then
+    /bin/rm -rf malib${BASE_ARCH} ; mkdir malib${BASE_ARCH}
+    ln -s $storage/malib${EC_ARCH} malib${BASE_ARCH}/
+  else
+    /bin/rm -rf malib${EC_ARCH} ; ln -sf $storage/malib${EC_ARCH} malib${EC_ARCH}
+  fi
+fi
+
+mainntr=main${MODEL}ntr_${BASE_ARCH}_${MODEL_VERSION}.Abs
+maindm=main${MODEL}dm_${BASE_ARCH}_${MODEL_VERSION}.Abs
+if [ ! "$same" ]; then
+  /bin/rm -f ${mainntr}; ln -sf $storage/${mainntr} ${mainntr} ; touch $storage/${mainntr}
+  /bin/rm -f ${maindm} ; ln -sf $storage/${maindm}  ${maindm}  ; touch $storage/${maindm}
+fi
+chmod 755 $storage/${mainntr} $storage/${maindm}
+#
+/bin/rm -rf RUNENT RUNMOD
+mkdir -p $storage/RUNENT $storage/RUNMOD 2> /dev/null
+if [ ! "$same" ]; then
+  ln -s $storage/RUNENT .
+  ln -s $storage/RUNMOD .
+fi
+#

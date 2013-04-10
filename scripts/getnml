@@ -1,0 +1,29 @@
+# awk -v NAMELIST="ptopo" -f getnml [infile] > [outfile]
+ BEGIN{
+      level = 0
+      NAMELIST=toupper(NAMELIST)
+      }
+{
+  nf = split(toupper($0),field,",")
+  for (i=1; i<=nf; i++){
+       if (index(field[i],"&") != 0){
+           if (index(substr(field[i],index(field[i],"&")+1),NAMELIST)>0){
+               level=level+1
+               }
+               }
+       if (index(field[i],"/") != 0) {
+                level = 0
+               }
+       if (level > 0) {
+       nf1 = split(field[i],field1," ")
+       for (j=1; j<=nf1; j++){
+       if (index(field1[j],"=")==1){
+           printf "%s\n",toupper(field1[j-1])
+           }
+       if (index(field1[j],"=")>1){
+           printf "%s\n",toupper(substr(field1[j],1,index(field1[j],"=")-1))
+           }
+       }
+       }
+       }
+}

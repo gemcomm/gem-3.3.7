@@ -1,0 +1,60 @@
+#!/bin/ksh
+#
+set +x
+#====> Obtaining the arguments:
+eval `cclargs_lite $0 \
+      -gnimin "150" "150"  "[min grid points for X (G_ni)]"\
+      -gnimax "250" "250"  "[max grid points for X (G_ni)]"\
+      -cfl    "0"   "1"    "[max cfl]                     "\
+      -help   "0"   "1"    "[help             ]"\
+      ++ $*`
+#
+if ((help)) then
+echo ie: findfft -gnimin $gnimin -gnimax $gnimax -pw $pw -pe $pe
+echo
+echo '-gnimin "150" "150"  "[min grid points for X (G_ni)]"'
+echo '-gnimax "250" "250"  "[max grid points for X (G_ni)]"'
+      -cfl    "0"   "1"    "[max cfl]                     "\
+echo
+exit
+fi
+
+if (($cfl > 0)) then
+     let pil=$cfl+5
+else
+let pil=0
+fi
+echo "Chosen maxcfl="$cfl," gives ====> pil="$pil
+echo "G_ni numbers that would work for FFT:"
+
+let j=${gnimin}
+while [ ${j} -le ${gnimax} ] ; do
+let F_nn=${j}-$pil-$pil
+let F_n=$F_nn
+if (($F_nn <= 8))
+then let F_n=9
+fi
+let i=$F_n
+while true
+   do
+    if (($i == 1)) then
+       if (($F_nn == $F_n))
+            then echo 'gni = ' ${j}
+            break
+       else
+            break
+       fi
+    fi
+    if (($i%2==0)) then
+    let i=$i/2
+    elif (($i%3==0)) then
+    let i=$i/3
+    elif (($i%5==0)) then
+    let i=$i/5
+    else
+       let F_n=$F_n+1
+       let i=$F_n
+    fi
+   done
+   let j=${j}+1
+done

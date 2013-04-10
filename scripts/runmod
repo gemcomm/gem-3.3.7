@@ -1,0 +1,2 @@
+ln -sf $AFSISIO/datafiles/constants/ozoclim_phy45 ozone_clim.fst
+. r.call.dot Um_runmod.ksh
