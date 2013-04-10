@@ -1,0 +1,8 @@
+***s/r t02tw_ad - TO BE REMOVED
+*
+      subroutine t02tw_ad
+*
+      call gem_stop('T02TW_AD: TO BE REMOVED',-1)
+*
+      return
+      end

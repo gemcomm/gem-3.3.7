@@ -1,0 +1,191 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_traj_update_ad - ADJ of adw_traj_update_tl 
+*                           (Based on adw_trajsp/adw_trajex)
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_traj_update_ad ( F_xt_d,  F_yt_d,  F_xct_d  ,F_yct_d  ,F_zct_d,
+     %                                F_ux_d,  F_uy_d,  F_uz_d   , 
+     %                                F_ux_d_m,F_uy_d_m,F_uz_d_m ,i0, in, j0, jn, dt_8)
+*
+      implicit none
+*
+      real   F_xt_d(*), F_yt_d(*), F_xct_d(*), F_yct_d(*), F_zct_d(*),
+     %       F_ux_d(*), F_uy_d(*), F_uz_d(*)
+*
+      real   F_ux_d_m(*), F_uy_d_m(*), F_uz_d_m(*) 
+*
+      real*8 dt_8
+
+      integer i0,in,j0,jn
+*
+*author M.Tanguay
+*
+*revision
+* v3_35 - Tanguay M.      - initial MPI version
+* v3_35 - Tanguay M.      - SETTLS option a la Ritchie/Girard 
+*
+*object
+*     see id section (Based on adw_trajsp/adw_trajex)
+*
+*arguments
+*______________________________________________________________________
+*              |                                                 |     |
+* NAME         | DESCRIPTION                                     | I/O |
+*--------------|-------------------------------------------------|-----|
+* F_xt_d       | upstream x positions at r_d                     |  o  |
+* F_yt_d       | upstream y positions at r_d                     |  o  |
+* F_xct_d      | upstream x cartesian positions at r_d           |  o  |
+* F_yct_d      | upstream y cartesian positions at r_d           |  o  |
+* F_zct_d      | upstream z cartesian positions at r_d           |  o  |
+* F_ux_d       | wind components cartesian X                     |  i  |
+* F_uy_d       | wind components cartesian Y                     |  i  |
+* F_uz_d       | wind components cartesian Z                     |  i  |
+* dt_8         | time step                                       |  i  |
+*______________|_________________________________________________|_____|
+*
+*implicits
+#include "glb_ld.cdk"
+#include "adw.cdk"
+#include "dcst.cdk"
+************************************************************************
+      integer i,j,k, n, ij, nij, vnij
+*
+      real*8 x_8,y_8,z_8,dot1_8,dot2_8,r2pi_8,TWO_8,bk_8 
+*
+      real*8   xy2_m_8, sz2_m_8
+*
+      real*8 dot1_m_8,dot2_m_8,bk_m_8,bk1_m_8
+*
+      real p_xct_d_m, p_yct_d_m, p_zct_d_m
+*
+      parameter (TWO_8 = 2.0)
+*
+************************************************************************
+      nij  = l_ni*l_nj
+      vnij = (in-i0+1)*(jn-j0+1)
+*
+      r2pi_8 = TWO_8 * Dcst_pi_8
+************************************************************************
+*
+!$omp parallel private (n,ij,
+!$omp& x_8,y_8,z_8,dot1_8,dot2_8,bk_8,
+!$omp& dot1_m_8,dot2_m_8,bk_m_8,bk1_m_8,xy2_m_8,sz2_m_8,
+!$omp& p_xct_d_m,p_yct_d_m,p_zct_d_m)
+*
+!$omp do
+      do k=l_nk,1,-1
+*
+         do j=jn,j0,-1
+         do i=in,i0,-1
+*
+            n = (k-1)*nij+((j-1)*l_ni) + i
+            ij = mod( n-1, nij ) + 1
+*
+*           ----------
+*           TRAJECTORY
+*           ----------
+*
+*           Evaluate cartesian coordinates of r
+*           -----------------------------------
+            y_8 = dble(Adw_cy2d_8(ij))
+            x_8 = dble(Adw_cx2d_8(ij)) * y_8
+            y_8 = dble(Adw_sx2d_8(ij)) * y_8
+            z_8 = dble(Adw_sy2d_8(ij))
+*
+*           Evaluate dot1 = <V_a,V_a> and dot2 = <V_a,r>   
+*           --------------------------------------------
+            dot1_m_8 = F_ux_d_m(n)*F_ux_d_m(n) + F_uy_d_m(n)*F_uy_d_m(n) + F_uz_d_m(n)*F_uz_d_m(n) 
+            dot2_m_8 = F_ux_d_m(n)*x_8         + F_uy_d_m(n)*y_8         + F_uz_d_m(n)*z_8 
+*
+*           Evaluate b = 1/[ 1 + dt**2<V_a,V_a> - 2dt<V_a,r> ]   
+*           --------------------------------------------------
+            bk_m_8 = 1. + (dt_8**2)*dot1_m_8 - 2.*dt_8*dot2_m_8  
+*
+            bk1_m_8 = bk_m_8
+*
+            bk_m_8 = 1./sqrt(bk_m_8)
+*
+*           Evaluate r_d = b [r - dt/a V_d]   
+*           -------------------------------
+            p_xct_d_m = bk_m_8 * ( x_8 - dt_8 * F_ux_d_m(n) )
+            p_yct_d_m = bk_m_8 * ( y_8 - dt_8 * F_uy_d_m(n) )
+            p_zct_d_m = bk_m_8 * ( z_8 - dt_8 * F_uz_d_m(n) )
+*
+            sz2_m_8 = sqrt(1.0 - p_zct_d_m*p_zct_d_m)
+            xy2_m_8 = p_xct_d_m*p_xct_d_m + p_yct_d_m*p_yct_d_m
+*
+*           --------------------
+*           Adjoint calculations
+*           --------------------
+*
+            F_yct_d (n) = (  p_xct_d_m*F_xt_d(n)) / xy2_m_8 + F_yct_d (n)
+            F_xct_d (n) = (- p_yct_d_m*F_xt_d(n)) / xy2_m_8 + F_xct_d (n)
+            F_xt_d  (n) = 0.
+*
+            if ( abs(p_zct_d_m) .ne. 1.0D0 ) then
+                 F_zct_d(n) = F_yt_d(n) / sz2_m_8 + F_zct_d(n)
+                 F_yt_d (n) = 0.
+            else
+                 F_yt_d (n) = 0.0D0
+            endif
+*
+*           Adjoint of
+*           Evaluate r_d = b [r - dt/a V_d]   
+*           -------------------------------
+            bk_8       = F_zct_d(n) * ( z_8 - dt_8 * F_uz_d_m(n) ) 
+            F_uz_d (n) =     bk_m_8 * (     - dt_8 * F_zct_d (n) ) + F_uz_d(n) 
+            F_zct_d(n) = 0.
+*
+            bk_8       = F_yct_d(n) * ( y_8 - dt_8 * F_uy_d_m(n) ) + bk_8
+            F_uy_d (n) =     bk_m_8 * (     - dt_8 * F_yct_d (n) ) + F_uy_d(n)
+            F_yct_d(n) = 0.
+*
+            bk_8       = F_xct_d(n) * ( x_8 - dt_8 * F_ux_d_m(n) ) + bk_8
+            F_ux_d (n) =     bk_m_8 * (     - dt_8 * F_xct_d (n) ) + F_ux_d(n)
+            F_xct_d(n) = 0.
+*
+*           Adjoint of
+*           Evaluate b = 1/[ 1 + dt**2<V_a,V_a> - 2dt<V_a,r> ]   
+*           --------------------------------------------------
+            bk_m_8 = bk1_m_8
+*
+            bk_8 = -0.5 * bk_8 /sqrt(bk_m_8)**3
+*
+            dot1_8 = (dt_8**2) * bk_8  
+            dot2_8 = - 2.*dt_8 * bk_8  
+*
+*           Adjoint of
+*           Evaluate dot1 = <V_a,V_a> and dot2 = <V_a,r>   
+*           --------------------------------------------
+            F_ux_d(n) = dot2_8 * x_8 + F_ux_d(n)
+            F_uy_d(n) = dot2_8 * y_8 + F_uy_d(n)
+            F_uz_d(n) = dot2_8 * z_8 + F_uz_d(n)
+*
+            F_ux_d(n) = 2. * dot1_8 * F_ux_d_m(n) + F_ux_d  (n) 
+            F_uy_d(n) = 2. * dot1_8 * F_uy_d_m(n) + F_uy_d  (n)
+            F_uz_d(n) = 2. * dot1_8 * F_uz_d_m(n) + F_uz_d  (n) 
+*
+         enddo
+         enddo
+      enddo
+*
+!$omp enddo
+!$omp end parallel
+*
+      return
+      end

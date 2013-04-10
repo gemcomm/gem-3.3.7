@@ -1,0 +1,1322 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_main_2_pos_settls_ad - ADJ of adw_main_2_pos_settls_tl when Adw_nosetint_L=.TRUE. 
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_main_2_pos_settls_ad ( F_it, F_u, F_v, F_w, F_um, F_vm, F_wm )
+*
+      implicit none
+*
+      integer F_it
+      real F_u (*),F_v (*),F_w (*)
+      real F_um(*),F_vm(*),F_wm(*)
+*
+*author
+*     monique tanguay
+*
+*revision
+* v2_31 - Tanguay M.        - initial MPI version
+* v3_00 - Tanguay M.        - adapt to restructured adw_main 
+* v3_00 - Tanguay M.        - restore vectorization in adjoint of semi-Lag.
+* v3_03 - Tanguay M.        - Adjoint Lam configuration 
+* v3_11 - Tanguay M.        - Remove restoration of vectorization in adjoint of semi-Lag
+*                           - AIXport+Opti+OpenMP for TLM-ADJ
+* v3_20 - Tanguay M.        - Optimized SETINT/TRILIN
+*                           - ADJ of Change test a lower and upper boundaries
+* v3_21 - Tanguay M.        - Call adw_main_2_pos_noset_ad based on Adw_nosetint_L
+* v3_30 - Tanguay M.        - correct calculation for LAM when Glb_pil gt 7 
+* v3_31 - Tanguay M.        - new scope for operator + adw_cliptraj (LAM)
+* v3_31 - Tanguay M.        - Do adjoint of outsiders in advection
+* v3_31 - Tanguay M.        - SETTLS option
+* v3_35 - Tanguay M.        - SETTLS option a la Ritchie/Girard 
+*
+*language
+*     fortran 77
+*
+*object
+*     see id section
+*
+*ADJ of
+*arguments
+*______________________________________________________________________
+*        |                                                       |     |
+* NAME   | DESCRIPTION                                           | I/O |
+*--------|-------------------------------------------------------|-----|
+* F_it   | total number of iterations for trajectory             |  i  |
+*        |                                                       |     |
+* F_u,F_v| input:  3 components of wind on advection grid        |  io |
+* F_w    | output: 3 components of upstream positions at t1      |     |
+*________|_______________________________________________________|_____|
+*
+*implicits
+#include "glb_ld.cdk"
+#include "glb_pil.cdk"
+#include "lun.cdk"
+#include "geomg.cdk"
+#include "adw.cdk"
+#include "dcst.cdk"
+#include "cstv.cdk"
+#include "vth.cdk"
+#include "vt1.cdk"
+#include "v4dg.cdk"
+#include "lctl.cdk"
+#include "vthm.cdk"
+#include "vt1m.cdk"
+#include "step.cdk"
+#include "schm.cdk"
+*
+*modules
+      integer  vmmlod, vmmget, vmmuld
+      external vmmlod, vmmget, vmmuld
+*
+      logical doh_L
+*
+      integer pnerr, pnlkey1(60), pnlod
+*
+      integer i, j, k, n, ij, ijk, nij, nijk, it, indice
+*
+      real,    dimension(l_ni*l_nj*l_nk)   :: wrkx1,wrky1,wrkz1,wrkc1,wrk_yt1
+      real,    dimension(l_ni*l_nj*l_nk)   :: wrkux1,wrkuy1,wrkuz1
+*
+      real,    dimension(l_ni*l_nj*l_nk)   :: rlon,rlat,wu,wv
+      real,    dimension(l_ni*l_nj*l_nk)   :: xtp,ytp,xctp,yctp,zctp
+*
+      real,    dimension(l_ni*l_nj*l_nk)   :: wrkx1m,wrky1m,wrkz1m,wrk_yt1m
+      real,    dimension(l_ni*l_nj*l_nk)   :: wrkux1m,wrkuy1m,wrkuz1m
+*
+      real,    dimension(l_ni*l_nj*l_nk)   :: wum,wvm
+      real,    dimension(l_ni*l_nj*l_nk)   :: xtpm,ytpm,xctpm,yctpm,zctpm
+*
+      integer, dimension(:),   allocatable :: n2m
+      real,    dimension(:),   allocatable :: capx2m,capy2m,capz2m
+      real,    dimension(:),   allocatable :: xpos2m,ypos2m,zpos2m
+*
+      integer, dimension(:),   allocatable :: n2
+      real,    dimension(:),   allocatable :: capx2,capy2,capz2
+      real,    dimension(:),   allocatable :: xpos2,ypos2,zpos2
+*
+      integer, dimension(:,:), allocatable :: n2m_K1
+      real,    dimension(:,:), allocatable :: capx2m_K1,capy2m_K1,capz2m_K1
+      real,    dimension(:,:), allocatable :: xpos2m_K1,ypos2m_K1,zpos2m_K1
+*
+      integer, dimension(:,:), allocatable :: n2m_K2
+      real,    dimension(:,:), allocatable :: capx2m_K2,capy2m_K2,capz2m_K2
+      real,    dimension(:,:), allocatable :: xpos2m_K2,ypos2m_K2,zpos2m_K2
+*
+      real,    dimension(:,:), allocatable :: F_vm_KA,F_vm_KB
+      real,    dimension(:,:), allocatable :: wrkc1m_KA,wrkc1m_KB
+*
+      real dth
+      real*8 ZERO_8,TWO_8,HALF_8,pdp_8,pdm_8
+      parameter (ZERO_8 = 0.0,TWO_8 = 2.0,HALF_8=0.5)
+*
+      real dummy
+*
+*     -----------------------
+*     Define extra space TRAJ
+*     -----------------------
+      integer ind(F_it)
+*
+      integer Adw_fro_n_KE1(F_it),Adw_fro_n_KE2(F_it)
+      integer Adw_fro_s_KE1(F_it),Adw_fro_s_KE2(F_it)
+      integer Adw_fro_a_KE1(F_it),Adw_fro_a_KE2(F_it)
+      integer Adw_fro_n_KE4(F_it),Adw_fro_n_KE5(F_it)
+      integer Adw_fro_s_KE4(F_it),Adw_fro_s_KE5(F_it)
+      integer Adw_fro_a_KE4(F_it),Adw_fro_a_KE5(F_it)
+*
+      integer Adw_for_n_KE3(F_it),Adw_for_n_KE6(F_it)
+      integer Adw_for_s_KE3(F_it),Adw_for_s_KE6(F_it)
+      integer Adw_for_a_KE3(F_it),Adw_for_a_KE6(F_it)
+*
+      integer i0,in,j0,jn
+*
+      integer Fn_I_1(l_ni*l_nj*l_nk*F_it),
+     %        Fn_I_2(l_ni*l_nj*l_nk*F_it)
+*
+      real capx1m_1(l_ni*l_nj*l_nk*F_it),
+     %     capy1m_1(l_ni*l_nj*l_nk*F_it),
+     %     capz1m_1(l_ni*l_nj*l_nk*F_it),
+*
+     %     capx1m_2(l_ni*l_nj*l_nk),
+     %     capy1m_2(l_ni*l_nj*l_nk),
+*
+     %     ythm_3  (l_ni*l_nj*l_nk*F_it),
+     %     xcthm_3 (l_ni*l_nj*l_nk*F_it),
+     %     ycthm_3 (l_ni*l_nj*l_nk*F_it),
+     %     zcthm_3 (l_ni*l_nj*l_nk*F_it),
+     %     wrkx1m_3(l_ni*l_nj*l_nk*F_it),
+     %     wrky1m_3(l_ni*l_nj*l_nk*F_it),
+*
+     %     xcthm_4 (l_ni*l_nj*l_nk*F_it),
+     %     ycthm_4 (l_ni*l_nj*l_nk*F_it),
+     %     zcthm_4 (l_ni*l_nj*l_nk*F_it),
+*
+     %     zt1m_5  (l_ni*l_nj*l_nk*F_it),
+     %     zthm_5  (l_ni*l_nj*l_nk)     ,
+*
+     %     wum_10  (l_ni*l_nj*l_nk*F_it),
+     %     wvm_10  (l_ni*l_nj*l_nk*F_it),
+*
+     %     xt1m_11  (l_ni*l_nj*l_nk*F_it),
+     %     yt1m_11  (l_ni*l_nj*l_nk*F_it),
+     %     wrkx1m_11(l_ni*l_nj*l_nk*F_it),
+     %     wrky1m_11(l_ni*l_nj*l_nk*F_it),
+     %     xtpm_11  (l_ni*l_nj*l_nk*F_it),
+     %     ytpm_11  (l_ni*l_nj*l_nk*F_it),
+*
+     %     wrkux1m_11(l_ni*l_nj*l_nk*F_it),
+     %     wrkuy1m_11(l_ni*l_nj*l_nk*F_it),
+     %     wrkuz1m_11(l_ni*l_nj*l_nk*F_it)
+*
+      real xt1m_ref1(l_ni*l_nj*l_nk,F_it),wrk_yt1m_ref1(l_ni*l_nj*l_nk,F_it)
+      real xt1m_ref2(l_ni*l_nj*l_nk,F_it),wrk_yt1m_ref2(l_ni*l_nj*l_nk,F_it)
+*
+************************************************************************
+      if ( .not.Adw_nosetint_L) call gem_stop ('ADW_MAIN_2_POS_SETTLS_AD 1 not done',-1)
+      if (G_lam)                call gem_stop ('ADW_MAIN_2_POS_SETTLS_AD 2 not done',-1)
+************************************************************************
+*
+      if (Lun_debug_L) write (Lun_out,1000)
+*
+*     ---------------
+*     Initializations 
+*     ---------------
+      nij    = l_ni   *l_nj
+      nijk   = l_ni   *l_nj   *l_nk
+*
+      dth    = Cstv_dt_8/2.
+      pdp_8  = 1.d0 + 1.d-6
+      pdm_8  = 1.d0 - 1.d-6
+*
+*     Set positions in extra space TRAJ
+*     ---------------------------------
+      do it = 1,F_it
+         ind(it) = nijk*(it-1) + 1
+      enddo
+*
+      if (.not.G_lam) then
+          allocate (  F_vm_KA(nijk,F_it),   F_vm_KB(nijk,F_it))
+          allocate (wrkc1m_KA(nijk,F_it), wrkc1m_KB(nijk,F_it))
+          allocate (capx2m_K1(nijk,F_it), capx2m_K2(nijk,F_it))
+          allocate (capy2m_K1(nijk,F_it), capy2m_K2(nijk,F_it))
+          allocate (capz2m_K1(nijk,F_it), capz2m_K2(nijk,F_it))
+          allocate (xpos2m_K1(nijk,F_it), xpos2m_K2(nijk,F_it))
+          allocate (ypos2m_K1(nijk,F_it), ypos2m_K2(nijk,F_it))
+          allocate (zpos2m_K1(nijk,F_it), zpos2m_K2(nijk,F_it))
+          allocate (   n2m_K1(nijk,F_it),    n2m_K2(nijk,F_it))
+      endif
+*
+************************************************************************
+*
+!$omp parallel do 
+      do n = 1,nijk
+*
+*        Set localization indices to 0 at it=1 
+*        -------------------------------------
+         Fn_I_1 (n) = transfer(-1,1.0)
+*
+*        Zero adjoint variables 
+*        ----------------------
+         wrkx1(n)   = ZERO_8
+         wrky1(n)   = ZERO_8
+         wrkz1(n)   = ZERO_8
+         wrkc1(n)   = ZERO_8
+*
+         wrk_yt1(n) = ZERO_8
+*
+      enddo
+!$omp end parallel do 
+*
+*     Zero adjoint work space 
+*     -----------------------
+      wu     = 0.
+      wv     = 0.
+      xtp    = 0.
+      ytp    = 0.
+      xctp   = 0.
+      yctp   = 0.
+      zctp   = 0.
+      wrkux1 = 0.
+      wrkuy1 = 0.
+      wrkuz1 = 0.
+*
+*     -----------------
+*     Do VMM allocation 
+*     -----------------
+      pnlkey1(1) = VMM_KEY(xth)
+      pnlkey1(2) = VMM_KEY(yth)
+      pnlkey1(3) = VMM_KEY(zth)
+      pnlkey1(4) = VMM_KEY(xcth)
+      pnlkey1(5) = VMM_KEY(ycth)
+      pnlkey1(6) = VMM_KEY(zcth)
+      pnlkey1(7) = VMM_KEY(xt1)
+      pnlkey1(8) = VMM_KEY(yt1)
+      pnlkey1(9) = VMM_KEY(zt1)
+      pnlkey1(10)= VMM_KEY(xct1)
+      pnlkey1(11)= VMM_KEY(yct1)
+      pnlkey1(12)= VMM_KEY(zct1)
+      pnlkey1(13)= VMM_KEY(uth)
+      pnlkey1(14)= VMM_KEY(vth)
+      pnlkey1(15)= VMM_KEY(psdth)
+      pnlod = 15
+*
+      pnlkey1(1+pnlod) = VMM_KEY(xthm)
+      pnlkey1(2+pnlod) = VMM_KEY(ythm)
+      pnlkey1(3+pnlod) = VMM_KEY(zthm)
+      pnlkey1(4+pnlod) = VMM_KEY(xcthm)
+      pnlkey1(5+pnlod) = VMM_KEY(ycthm)
+      pnlkey1(6+pnlod) = VMM_KEY(zcthm)
+      pnlkey1(7+pnlod) = VMM_KEY(xt1m)
+      pnlkey1(8+pnlod) = VMM_KEY(yt1m)
+      pnlkey1(9+pnlod) = VMM_KEY(zt1m)
+      pnlkey1(10+pnlod)= VMM_KEY(xct1m)
+      pnlkey1(11+pnlod)= VMM_KEY(yct1m)
+      pnlkey1(12+pnlod)= VMM_KEY(zct1m)
+      pnlkey1(13+pnlod)= VMM_KEY(uthm)
+      pnlkey1(14+pnlod)= VMM_KEY(vthm)
+      pnlkey1(15+pnlod)= VMM_KEY(psdthm)
+      pnlod = 15+pnlod
+*
+      pnerr = vmmlod(pnlkey1,pnlod)
+*
+      pnerr = VMM_GET_VAR(xth)
+      pnerr = VMM_GET_VAR(yth)
+      pnerr = VMM_GET_VAR(zth)
+      pnerr = VMM_GET_VAR(xcth)
+      pnerr = VMM_GET_VAR(ycth)
+      pnerr = VMM_GET_VAR(zcth)
+      pnerr = VMM_GET_VAR(xt1)
+      pnerr = VMM_GET_VAR(yt1)
+      pnerr = VMM_GET_VAR(zt1)
+      pnerr = VMM_GET_VAR(xct1)
+      pnerr = VMM_GET_VAR(yct1)
+      pnerr = VMM_GET_VAR(zct1)
+      pnerr = VMM_GET_VAR(uth)
+      pnerr = VMM_GET_VAR(vth)
+      pnerr = VMM_GET_VAR(psdth)
+*
+      pnerr = VMM_GET_VAR(xthm)
+      pnerr = VMM_GET_VAR(ythm)
+      pnerr = VMM_GET_VAR(zthm)
+      pnerr = VMM_GET_VAR(xcthm)
+      pnerr = VMM_GET_VAR(ycthm)
+      pnerr = VMM_GET_VAR(zcthm)
+      pnerr = VMM_GET_VAR(xt1m)
+      pnerr = VMM_GET_VAR(yt1m)
+      pnerr = VMM_GET_VAR(zt1m)
+      pnerr = VMM_GET_VAR(xct1m)
+      pnerr = VMM_GET_VAR(yct1m)
+      pnerr = VMM_GET_VAR(zct1m)
+      pnerr = VMM_GET_VAR(uthm)
+      pnerr = VMM_GET_VAR(vthm)
+      pnerr = VMM_GET_VAR(psdthm)
+*
+*     ------------------
+*     TRAJECTORY (START)
+*     ------------------
+*
+      i0=1
+      in=l_ni
+      j0=1
+      jn=l_nj
+      if (G_lam) then
+          if (l_west)  i0=pil_w
+          if (l_east)  in=l_niu - pil_e + 2
+          if (l_south) j0=pil_s
+          if (l_north) jn=l_njv - pil_n + 2
+      endif
+*
+************************************************************************
+      do it=1,F_it
+************************************************************************
+                     doh_L = .false.
+      if (it .eq. 1) doh_L = .true.
+*
+!$omp parallel do 
+      do n = 1,nijk
+         wrk_yt1m(n) = yt1m(n)
+      enddo
+!$omp end parallel do
+*
+      if (G_lam) then
+*
+          if (Step_cliptraj_L) then
+          do n=1,l_ni*l_nj*l_nk
+                 xt1m_ref1(n,it) =     xt1m(n)
+             wrk_yt1m_ref1(n,it) = wrk_yt1m(n)
+          enddo
+          endif
+          call adw_cliptraj ( xt1m, wrk_yt1m, i0, in, j0, jn, "" )
+*
+      else
+*
+          call adw_exch_1_tr ( wrkx1m,wrky1m,wrkz1m,wrkc1m_KA(1,it),
+     $                         xt1m,wrk_yt1m,zt1m,F_vm_KA(1,it))
+*
+          allocate(capx2m(max(1,Adw_fro_a)),
+     %             capy2m(max(1,Adw_fro_a)),
+     %             capz2m(max(1,Adw_fro_a)),
+     %             xpos2m(max(1,Adw_fro_a)),
+     %             ypos2m(max(1,Adw_fro_a)),
+     %             zpos2m(max(1,Adw_fro_a)),
+     %                n2m(max(1,Adw_fro_a)))
+*
+          Adw_fro_n_KE1(it) = Adw_fro_n
+          Adw_fro_s_KE1(it) = Adw_fro_s
+          Adw_fro_a_KE1(it) = Adw_fro_a
+*
+          call adw_exch_2 ( xpos2m,ypos2m,zpos2m,
+     %                      wrkx1m,wrky1m,wrkz1m,
+     %                      Adw_fro_n, Adw_fro_s, Adw_fro_a,
+     %                      Adw_for_n, Adw_for_s, Adw_for_a, 3)
+*
+      endif
+*
+*     ----------------------------
+*     NOTE:Uthm Vthm never changed
+*     ----------------------------
+*
+*     TRAJ of
+*     -----------------------------------------------------------------------------------
+*     Part 1 of SETTLS: Evaluate [ 2 V(r_d,t-dt)-V(r_d,t-2dt) ] in wrkx1,wrky1 (U-V only)
+*     -----------------------------------------------------------------------------------
+*     1)  INPUT: F_u,F_v     = 2*V(r,t-dt)-V(r,t-2dt)
+*     2) OUTPUT: wrkx1,wrky1 = 2*V(r,t-dt)-V(r,t-2dt) interpolated at r_d = V_int
+*     ---------------------------------------------------------------------------
+*
+      Adw_hor_L = doh_L
+      Adw_ver_L = .true.
+*     --------------------------------------------------
+*     Preserve Fn_Im capx1m capy1m capz1m for ADJOINT #1
+*     --------------------------------------------------
+      call adw_trilin_turbo_tr (wrkx1m,F_um,1.0,xt1m,wrk_yt1m,zt1m,
+     %                          capx1m_1(ind(it)),capy1m_1(ind(it)),capz1m_1(ind(it)),
+     %                          Fn_I_1(ind(it)),nijk,i0,in,j0,jn,l_nk)
+*
+      call adw_trilin_turbo (wrky1m,F_vm,1.0,xt1m,wrk_yt1m,zt1m,
+     %                       capz1m_1(ind(it)),
+     %                       Fn_I_1(ind(it)),nijk,i0,in,j0,jn,l_nk)
+*
+      if (.not.G_lam) then
+
+         if ( Adw_fro_a .gt. 0 ) then
+*
+              do n = 1,Adw_fro_a
+                 xpos2m_K1(n,it) = xpos2m(n)
+                 ypos2m_K1(n,it) = ypos2m(n)
+                 zpos2m_K1(n,it) = zpos2m(n)
+              enddo
+*
+              call adw_setint ( n2m,  capx2m,dummy,dummy, capy2m,dummy,
+     %                          dummy,capz2m,dummy,xpos2m,ypos2m,zpos2m,
+     %                          .true.,.true.,.true.,Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              do n = 1,Adw_fro_a
+                    n2m_K1(n,it) =    n2m(n)
+                 capx2m_K1(n,it) = capx2m(n)
+                 capy2m_K1(n,it) = capy2m(n)
+                 capz2m_K1(n,it) = capz2m(n)
+              enddo
+*
+              call adw_trilin ( xpos2m,F_um,1.0,n2m,capx2m,capy2m,capz2m,
+     %                          Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              call adw_trilin ( ypos2m,F_vm,1.0,n2m,capx2m,capy2m,capz2m,
+     %                          Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+         endif
+*
+         Adw_fro_n_KE2(it) = Adw_fro_n
+         Adw_fro_s_KE2(it) = Adw_fro_s
+         Adw_fro_a_KE2(it) = Adw_fro_a
+*
+         call adw_exch_2 ( wrkz1m,wrk_yt1m,dummy,
+     %                     xpos2m,ypos2m,  dummy,
+     %                     Adw_for_n, Adw_for_s, Adw_for_a,
+     %                     Adw_fro_n, Adw_fro_s, Adw_fro_a, 2)
+*
+         Adw_for_n_KE3(it) = Adw_for_n
+         Adw_for_s_KE3(it) = Adw_for_s
+         Adw_for_a_KE3(it) = Adw_for_a
+*
+         if ( Adw_for_a .gt. 0 )
+     %        call adw_exch_3 ( wrkx1m,wrky1m,wrkz1m,wrk_yt1m,wrkc1m_KA(1,it),2)
+*
+         deallocate(capx2m,capy2m,capz2m,xpos2m,ypos2m,zpos2m,n2m)
+*
+      endif
+*
+!$omp parallel do private(n)
+      do k=1,l_nk
+      do j=1,l_nj
+      do i=1,l_ni
+         n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+*
+         wum(n) = uthm(i,j,k)
+         wvm(n) = vthm(i,j,k)
+*
+      enddo
+      enddo
+      enddo
+!$omp end parallel do
+*
+!$omp parallel do
+      do ijk=1,nijk
+*
+*        ------------------------------------------------
+*        Set Fn_I_2 = Fn_I_1 
+*        NOTE: Fn_I_2 will be changed by adw_trilin_turbo
+*        ------------------------------------------------
+         Fn_I_2  (ind(it)+ijk-1) = Fn_I_1(ind(it)+ijk-1)
+*
+      enddo
+!$omp end parallel do  
+*
+*     ----------------------------
+*     SETTLS VARIANT: A LA RITCHIE
+*     ----------------------------
+      if (Schm_settls_opt.eq.1) then
+*
+!$omp parallel do
+           do ijk=1,nijk
+             xt1m_11  (ind(it)+ijk-1) = xt1m(ijk)
+             yt1m_11  (ind(it)+ijk-1) = yt1m(ijk)
+             wrkx1m_11(ind(it)+ijk-1) = wrkx1m(ijk)
+             wrky1m_11(ind(it)+ijk-1) = wrky1m(ijk)
+          enddo
+!$omp end parallel do
+*
+*         Part 2 of SETTLS: Evaluate V_d = 0.5 * (V_int + V(r,t-dt)) in cartesian coordinates
+*         -----------------------------------------------------------------------------------
+          call adw_traj_addition (wrkux1m, wrkuy1m, wrkuz1m, wrkx1m, wrky1m, wum, wvm,
+     %                            xt1m, yt1m, i0, in, j0, jn)
+*
+*         Part 3 of SETTLS: Evaluate r_d = b [r - dt/a V_d]
+*         -------------------------------------------------
+!$omp parallel do
+           do ijk=1,nijk
+             wrkux1m_11(ind(it)+ijk-1) = wrkux1m(ijk)
+             wrkuy1m_11(ind(it)+ijk-1) = wrkuy1m(ijk)
+             wrkuz1m_11(ind(it)+ijk-1) = wrkuz1m(ijk)
+          enddo
+!$omp end parallel do
+          call adw_traj_update (xt1m, yt1m, xct1m, yct1m, zct1m, wrkux1m, wrkuy1m, wrkuz1m,
+     %                          i0, in, j0, jn, Cstv_dt_8)
+*
+*     ---------------------------
+*     SETTLS VARIANT: A LA GIRARD
+*     ---------------------------
+      elseif (Schm_settls_opt.eq.2) then
+*
+*         Part 2 of SETTLS: Rotate with respect to the great circle defined by V_arrival at r
+*         -----------------------------------------------------------------------------------
+*         NOTE: V_arrival = V(r,t-dt) in (uth,vth)
+*         ----------------------------------------
+*
+!$omp parallel do private(n)
+          do k=1,l_nk
+          do j=1,l_nj
+          do i=1,l_ni
+             n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+             rlon(n) = Geomg_x_8(i)
+             rlat(n) = Geomg_y_8(j)
+          enddo
+          enddo
+          enddo
+!$omp end parallel do
+*
+*        ------------------------------------------------------------
+*        Preserve wum wvm for ADJOINT #10
+*        ------------------------------------------------------------
+          if (it.eq.1) then
+*
+!$omp parallel do 
+           do ijk=1,nijk
+             wum_10(ind(it)+ijk-1) = wum(ijk)
+             wvm_10(ind(it)+ijk-1) = wvm(ijk)
+          enddo
+!$omp end parallel do
+*
+          call adw_traj_great_circle_1 ( xtpm, ytpm, xctpm, yctpm, zctpm, wum, wvm ,
+     %                                   rlon, rlat, dth,
+     %                                   i0,in,j0,jn )
+          endif
+*
+*        ------------------------------------------------------------
+*        Preserve xt1m yt1m wrkx1m wrky1m xtpm, ytpm for ADJOINT #11
+*        ------------------------------------------------------------
+!$omp parallel do 
+           do ijk=1,nijk
+             xt1m_11  (ind(it)+ijk-1) = xt1m  (ijk)
+             yt1m_11  (ind(it)+ijk-1) = yt1m  (ijk)
+             wrkx1m_11(ind(it)+ijk-1) = wrkx1m(ijk)
+             wrky1m_11(ind(it)+ijk-1) = wrky1m(ijk)
+             xtpm_11  (ind(it)+ijk-1) = xtpm  (ijk)
+             ytpm_11  (ind(it)+ijk-1) = ytpm  (ijk)
+          enddo
+!$omp end parallel do
+*
+*         Part 3 of SETTLS: Rotate with respect to the great circle defined by V_destination at r_d
+*         -----------------------------------------------------------------------------------------
+*         NOTE: V_destination = 2*V(r_d,t-dt)-V(r_d,t-2dt) at r_d in (wrkx1,wrky1)
+*         ------------------------------------------------------------------------
+          call adw_traj_great_circle_2 ( xt1m, yt1m, xct1m, yct1m, zct1m, wrkx1m, wrky1m, xtpm, ytpm,
+     %                                   dth, i0,in,j0,jn )
+*
+      endif
+*
+*     TRAJ of
+c     ==================================================================
+c     3D interpolation of zeta dot
+c     ==================================================================
+*
+!$omp parallel do 
+      do n = 1,nijk
+         wrk_yt1m(n) = yt1m(n)
+      enddo
+!$omp end parallel do
+*
+      if (G_lam) then
+*
+          if (Step_cliptraj_L) then
+          do n=1,l_ni*l_nj*l_nk
+                 xt1m_ref2(n,it) =     xt1m(n)
+             wrk_yt1m_ref2(n,it) = wrk_yt1m(n)
+          enddo
+          endif
+          call adw_cliptraj ( xt1m, wrk_yt1m, i0, in, j0, jn, "" )
+*
+      else
+*
+          call adw_exch_1_tr ( wrkx1m,wrky1m,wrkz1m,wrkc1m_KB(1,it),
+     $                         xt1m,wrk_yt1m,zt1m,F_vm_KB(1,it))
+*
+          allocate(capx2m(max(1,Adw_fro_a)),
+     %             capy2m(max(1,Adw_fro_a)),
+     %             capz2m(max(1,Adw_fro_a)),
+     %             xpos2m(max(1,Adw_fro_a)),
+     %             ypos2m(max(1,Adw_fro_a)),
+     %             zpos2m(max(1,Adw_fro_a)),
+     %                n2m(max(1,Adw_fro_a)))
+*
+          Adw_fro_n_KE4(it) = Adw_fro_n
+          Adw_fro_s_KE4(it) = Adw_fro_s
+          Adw_fro_a_KE4(it) = Adw_fro_a
+*
+          call adw_exch_2 ( xpos2m,ypos2m,zpos2m,
+     %                      wrkx1m,wrky1m,wrkz1m,
+     %                      Adw_fro_n, Adw_fro_s, Adw_fro_a,
+     %                      Adw_for_n, Adw_for_s, Adw_for_a, 3)
+*
+      endif
+*     -----------------------
+*     NOTE:Wthm never changed
+*     -----------------------
+*
+      Adw_hor_L = .true.
+      Adw_ver_L = .false.
+*
+      if(it.eq.F_it) then
+*     -----------------------------------------------------------------
+*     Preserve capx1m capy1m for ADJOINT #2 and Fn_I_2 for ADJOINT #2A
+*     -----------------------------------------------------------------
+      call adw_trilin_turbo_tr (wrkz1m,F_wm,-dth,xt1m,wrk_yt1m,zt1m,
+     %                          capx1m_2,capy1m_2,capz1m_1(ind(it)),
+     %                          Fn_I_2(ind(it)),nijk,i0,in,j0,jn,l_nk)
+      else
+      call adw_trilin_turbo (wrkz1m,F_wm,-dth,xt1m,wrk_yt1m,zt1m,
+     %                       capz1m_1(ind(it)),
+     %                       Fn_I_2(ind(it)),nijk,i0,in,j0,jn,l_nk)
+      endif
+*
+      if (.not.G_lam) then
+*
+         if ( Adw_fro_a .gt. 0 ) then
+*
+              if ( Adw_ckbd_L ) call adw_ckbd ( ypos2m )
+*
+              do n = 1,Adw_fro_a
+                 xpos2m_K2(n,it) = xpos2m(n)
+                 ypos2m_K2(n,it) = ypos2m(n)
+                 zpos2m_K2(n,it) = zpos2m(n)
+              enddo
+*
+              call adw_setint ( n2m,  capx2m,dummy,dummy, capy2m,dummy,
+     %                          dummy,capz2m,dummy,xpos2m,ypos2m,zpos2m,
+     %                         .true.,.true.,.true.,Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              do n = 1,Adw_fro_a
+                    n2m_K2(n,it) =    n2m(n)
+                 capx2m_K2(n,it) = capx2m(n)
+                 capy2m_K2(n,it) = capy2m(n)
+                 capz2m_K2(n,it) = capz2m(n)
+              enddo
+*
+              call adw_trilin ( xpos2m,F_wm,-dth,n2m,capx2m,capy2m,capz2m,
+     %                          Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+         endif
+*
+         Adw_fro_n_KE5(it) = Adw_fro_n
+         Adw_fro_s_KE5(it) = Adw_fro_s
+         Adw_fro_a_KE5(it) = Adw_fro_a
+*
+         call adw_exch_2 ( wrkx1m,dummy,dummy,
+     %                     xpos2m,dummy,dummy,
+     %                     Adw_for_n, Adw_for_s, Adw_for_a,
+     %                     Adw_fro_n, Adw_fro_s, Adw_fro_a, 1)
+*
+         Adw_for_n_KE6(it) = Adw_for_n
+         Adw_for_s_KE6(it) = Adw_for_s
+         Adw_for_a_KE6(it) = Adw_for_a
+*
+         if ( Adw_for_a .gt. 0 )
+     %        call adw_exch_3 ( wrkz1m,dummy,wrkx1m,dummy,wrkc1m_KB(1,it),1)
+*
+         deallocate(capx2m,capy2m,capz2m,xpos2m,ypos2m,zpos2m,n2m)
+*
+      endif
+*
+!$omp parallel private(n)
+*
+*     TRAJ of
+*     -------------------------------------------------------------------------------
+*     Part 5 of SETTLS: Evaluate - dt V_d = - dt/2 * V_int  - dt/2 V(r,t-dt) (W only)
+*     -------------------------------------------------------------------------------
+*     1) INPUT : wrkz1 = - dt/2 [2*V(r_d,t-dt)-V(r_d,t-2dt)]
+*     2) INPUT : psdth =           V(r  ,t-dt)
+*     3) OUTPUT: wrkz1 = - dt/2 [2*V(r_d,t-dt)-V(r_d,t-2dt)] - dt/2 V(r,t-dt) = -dt V_d
+*     -------------------------------------------------------------------------------------------
+!$omp do
+      do k=1,l_nk
+      do j=1,l_nj
+      do i=1,l_ni
+         n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+*
+         wrkz1m(n) = wrkz1m(n) - dth*psdthm(i,j,k)
+*
+      enddo
+      enddo
+      enddo
+!$omp enddo
+*
+c     ==================================================================
+c     Compute new upstream position along zeta
+c     ==================================================================
+c
+*     ---------------------------------------------
+*     Part 6 of SETTLS: Evaluate z_d = [z - dt V_d]
+*     ---------------------------------------------
+*
+!$omp do
+      do j = j0,jn
+      do i = i0,in
+         n = ((j-1)*l_ni) + i   !for k=1
+         zt1m(n) = Geomg_z_8(1)
+*
+*        -----------------------------
+*        Preserve zt1m for ADJOINT #5
+*        -----------------------------
+         zt1m_5 (ind(it)+n)  = zt1m(n)
+*
+         n = (l_nk-1)*nij+((j-1)*l_ni) + i !for k=l_nk
+         zt1m(n) = Geomg_z_8(l_nk)
+*
+*        -----------------------------
+*        Preserve zt1m for ADJOINT #5
+*        -----------------------------
+         zt1m_5 (ind(it)+n)  = zt1m(n)
+*
+      enddo
+      enddo
+!$omp enddo
+!$omp do
+      do k = 2,l_nk-1
+      do j = j0,jn
+      do i = i0,in
+         n = (k-1)*nij + ((j-1)*l_ni) + i
+         zt1m(n) = Geomg_z_8(k) + wrkz1m(n)
+*
+*        -----------------------------
+*        Preserve zt1m for ADJOINT #5
+*        -----------------------------
+         zt1m_5 (ind(it)+n)  = zt1m(n)
+*
+         if (1.0d0*zt1m(n).lt.pdp_8*Geomg_z_8(1)) then
+             zt1m(n) = pdp_8*Geomg_z_8(1)
+         elseif (1.0d0*zt1m(n).gt.pdm_8*Geomg_z_8(l_nk)) then
+             zt1m(n) = pdm_8*Geomg_z_8(l_nk)
+         endif
+*
+      enddo
+      enddo
+      enddo
+!$omp enddo
+*
+!$omp end parallel
+*
+      if(it.ne.F_it) then
+*
+*     -------------------------------
+*     Reset Fn_I_1 for next iteration
+*     -------------------------------
+!$omp parallel do 
+      do ijk=1,nijk
+         Fn_I_1(ind(it+1)+ijk-1) = Fn_I_2(ind(it)+ijk-1)
+      enddo
+!$omp end parallel do
+*
+      endif
+*
+************************************************************************
+      enddo ! end of iterations loop
+************************************************************************
+*
+!$omp parallel private(n)
+!$omp do
+      do j = j0,jn
+      do i = i0,in
+         n = ((j-1)*l_ni) + i   !for k=1
+         zthm(n) = Geomg_z_8(1)
+*
+*        -----------------------------
+*        Preserve zthm for ADJOINT #5
+*        -----------------------------
+         zthm_5 (n)  = zthm(n)
+*
+         n = (l_nk-1)*nij+((j-1)*l_ni) + i !for k=l_nk
+         zthm(n) = Geomg_z_8(l_nk)
+*
+*        -----------------------------
+*        Preserve zthm for ADJOINT #5
+*        -----------------------------
+         zthm_5 (n)  = zthm(n)
+*
+      enddo
+      enddo
+!$omp enddo
+!$omp do
+      do k = 2,l_nk-1
+         do j = j0,jn
+         do i = i0,in
+            n=(k-1)*nij+((j-1)*l_ni) + i
+*
+            zthm(n) = HALF_8*(zt1m(n) + Geomg_z_8(k))
+*
+*           -----------------------------
+*           Preserve zthm for ADJOINT #5
+*           -----------------------------
+            zthm_5 (n)  = zthm(n)
+*
+         enddo
+         enddo
+      enddo
+!$omp enddo
+!$omp end parallel
+*
+*     ----------------
+*     TRAJECTORY (END)
+*     ----------------
+*
+!$omp parallel private(n)
+*
+*     ADJOINT CALCULATIONS
+*     --------------------
+*
+*     Adjoint of
+*     Evaluate positions at mid-point for Crank-Nicholson procedure
+*     -------------------------------------------------------------
+!$omp do
+      do k = l_nk-1,2,-1
+         do j = j0,jn
+         do i = i0,in
+            n=(k-1)*nij+((j-1)*l_ni) + i
+*
+*           --------------------------
+*           Reset zthm for ADJOINT #5
+*           --------------------------
+            if (1.0d0*zthm_5(n).lt.pdp_8*Geomg_z_8(1)) then
+                zth (n) = 0.
+            elseif (1.0d0*zthm_5(n).gt.pdm_8*Geomg_z_8(l_nk)) then
+                zth (n) = 0.
+            endif
+*
+            zt1(n) = HALF_8*(zth(n)) + zt1(n)
+            zth(n) = 0.0 
+*
+         enddo
+         enddo
+      enddo
+!$omp enddo
+*
+!$omp do
+      do j = j0,jn
+      do i = i0,in
+         n = (l_nk-1)*nij+((j-1)*l_ni) + i !for k=l_nk
+         zth (n) = 0.
+         n = ((j-1)*l_ni) + i   !for k=1
+         zth (n) = 0.
+      enddo
+      enddo
+!$omp enddo
+*
+!$omp end parallel
+*
+      call adw_traj_midpoint_ad (xth , yth , xcth , ycth , zcth , xct1 , yct1 , zct1 ,
+     %                                                            xct1m, yct1m, zct1m,
+     %                           i0,in,j0,jn)
+*
+*     Adjoint of
+*     Store xt1,yt1,zt1 positions in F_u,F_v,F_w (used in adw_main_3_int)
+*     -------------------------------------------------------------------
+*
+!$omp parallel do
+      do i=1,l_ni*l_nj*l_nk
+*
+         zt1(i) = F_w(i) + zt1(i) 
+         yt1(i) = F_v(i) + yt1(i)
+         xt1(i) = F_u(i) + xt1(i)
+*
+         F_w(i) = 0.
+         F_v(i) = 0.
+         F_u(i) = 0.
+*
+      enddo
+!$omp end parallel do
+*
+************************************************************************
+      do it=F_it,1,-1
+************************************************************************
+*
+      doh_L = .false.
+      if (it .eq. F_it) doh_L = .true.
+*
+*     Adjoint of
+c     ==================================================================
+c     Compute new upstream position along zeta
+c     ==================================================================
+c
+*     ---------------------------------------------
+*     Part 6 of SETTLS: Evaluate z_d = [z - dt V_d]
+*     ---------------------------------------------
+*
+!$omp parallel private(n)
+!$omp do
+      do k = l_nk-1,2,-1
+      do j = j0,jn
+      do i = i0,in
+         n = (k-1)*nij + ((j-1)*l_ni) + i
+*
+*        --------------------------
+*        Reset zthm for ADJOINT #5
+*        --------------------------
+         if (1.0d0*zt1m_5(ind(it)+n).lt.pdp_8*Geomg_z_8(1)) then
+             zt1 (n) = 0.
+         elseif (1.0d0*zt1m_5(ind(it)+n).gt.pdm_8*Geomg_z_8(l_nk)) then
+             zt1 (n) = 0.
+         endif
+*
+         wrkz1(n) = zt1(n) + wrkz1(n)
+         zt1  (n) = ZERO_8
+*
+      enddo
+      enddo
+      enddo
+!$omp enddo
+!$omp do
+      do j = j0,jn
+      do i = i0,in
+         n = (l_nk-1)*nij+((j-1)*l_ni) + i !for k=l_nk
+         zt1 (n) = 0.0
+         n = ((j-1)*l_ni) + i   !for k=1
+         zt1 (n) = 0.0
+      enddo
+      enddo
+!$omp enddo
+!$omp end parallel
+*
+*     Adjoint of
+*     -------------------------------------------------------------------------------
+*     Part 5 of SETTLS: Evaluate - dt V_d = - dt/2 * V_int  - dt/2 V(r,t-dt) (W only)
+*     -------------------------------------------------------------------------------
+*     1) INPUT : wrkz1 = - dt/2 [2*V(r_d,t-dt)-V(r_d,t-2dt)]
+*     2) INPUT : psdth =           V(r  ,t-dt)
+*     3) OUTPUT: wrkz1 = - dt/2 [2*V(r_d,t-dt)-V(r_d,t-2dt)] - dt/2 V(r,t-dt) = -dt V_d
+*     -------------------------------------------------------------------------------------------
+!$omp parallel do private(n) 
+      do k=1,l_nk
+      do j=1,l_nj
+      do i=1,l_ni
+         n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+*
+         psdth(i,j,k) = - dth*wrkz1(n) + psdth(i,j,k)
+*
+      enddo
+      enddo
+      enddo
+!$omp end parallel do
+*
+      if (.not.G_lam) then
+*
+         Adw_fro_n = Adw_fro_n_KE5(it)
+         Adw_fro_s = Adw_fro_s_KE5(it)
+         Adw_fro_a = Adw_fro_a_KE5(it)
+*
+          allocate(capx2(max(1,Adw_fro_a)),
+     %             capy2(max(1,Adw_fro_a)),
+     %             capz2(max(1,Adw_fro_a)),
+     %             xpos2(max(1,Adw_fro_a)),
+     %             ypos2(max(1,Adw_fro_a)),
+     %             zpos2(max(1,Adw_fro_a)),
+     %                n2(max(1,Adw_fro_a)))
+*
+*        Zero adjoint variables
+*        ----------------------
+         do n = 1,max(1,Adw_fro_a)
+            capx2(n) = ZERO_8
+            capy2(n) = ZERO_8
+            capz2(n) = ZERO_8
+            xpos2(n) = ZERO_8
+            ypos2(n) = ZERO_8
+            zpos2(n) = ZERO_8
+         enddo
+*
+         Adw_for_n = Adw_for_n_KE6(it)
+         Adw_for_s = Adw_for_s_KE6(it)
+         Adw_for_a = Adw_for_a_KE6(it)
+*
+         if ( Adw_for_a .gt. 0 )
+     %         call adw_exch_3_ad ( wrkz1,dummy,wrkx1,dummy,wrkc1,
+     %                                                      wrkc1m_KB(1,it),1)
+*
+         call adw_exch_2_ad ( wrkx1,dummy,dummy,
+     %                        xpos2,dummy,dummy,
+     %                        Adw_for_n, Adw_for_s, Adw_for_a,
+     %                        Adw_fro_n, Adw_fro_s, Adw_fro_a, 1)
+*
+         if ( Adw_fro_a .gt. 0 ) then
+*
+              call adw_trilin_ad ( xpos2, F_w, -dth,
+     %                             capx2,capy2,capz2,
+     %                                    F_wm,n2m_K2(1,it),
+     %                             capx2m_K2(1,it),capy2m_K2(1,it),capz2m_K2(1,it),
+     %                             Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              call adw_setint_ad ( n2,   capx2,dummy,dummy,capy2,dummy,
+     %                             dummy,capz2,dummy,xpos2,ypos2,zpos2,
+     %                             xpos2m_K2(1,it),ypos2m_K2(1,it),zpos2m_K2(1,it),
+     %                             .true.,.true.,.true.,Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+         endif
+*
+      endif
+*
+*     Adjoint of
+c     ==================================================================
+c     3D interpolation of zeta dot
+c     ==================================================================
+*
+*     Adjoint of
+*     ----------------------------------------------------------------------------------
+*     Part 4 of SETTLS: Evaluate - dt/2 [ 2 V(r_d,t-dt)-V(r_d,t-2dt) ] in wrkz1 (W only)
+*     ----------------------------------------------------------------------------------
+*     1)  INPUT: F_w   =        [2*V(r,t-dt)-V(r,t-2dt)]
+*     2) OUTPUT: wrkz1 = - dt/2 [2*V(r,t-dt)-V(r,t-2dt)] interpolated at r_d =  - dt/2 V_int
+*     --------------------------------------------------------------------------------------
+*     -----------------------
+*     NOTE:Wthm never changed
+*     -----------------------
+*
+      if(it.eq.F_it) then
+*
+*     ------------------------------------------------------
+*     Reset capz1m for ADJOINT #1 and Fn_I_2 for ADJOINT #2A 
+*     Reset capx1m capy1m for ADJOINT #2 
+*     ------------------------------------------------------
+      call adw_trilin_turbo_ad (wrkz1, F_w, -dth, xt1, wrk_yt1, zt1,
+     %                                 F_wm,
+     %                          capx1m_2,capy1m_2,capz1m_1(ind(it)),
+     %                          Fn_I_2(ind(it)),nijk,i0,in,j0,jn,l_nk)
+      else
+*
+*     --------------------------------------------------------------------
+*     Reset capx1m capy1m capz1m for ADJOINT #1 and Fn_I_2 for ADJOINT #2A 
+*     --------------------------------------------------------------------
+      call adw_trilin_turbo_ad (wrkz1, F_w, -dth, xt1, wrk_yt1, zt1,
+     %                                 F_wm,
+     %                          capx1m_1(ind(it+1)),capy1m_1(ind(it+1)),capz1m_1(ind(it)),
+     %                          Fn_I_2(ind(it)),nijk,i0,in,j0,jn,l_nk)
+      endif
+*
+      if (G_lam) then
+*
+          call adw_cliptraj_ad ( xt1, wrk_yt1, xt1m_ref2(1,it), wrk_yt1m_ref2(1,it), i0, in, j0, jn, "")
+*
+      else
+*
+          Adw_fro_n = Adw_fro_n_KE4(it)
+          Adw_fro_s = Adw_fro_s_KE4(it)
+          Adw_fro_a = Adw_fro_a_KE4(it)
+*
+          call adw_exch_2_ad ( xpos2,ypos2,zpos2,
+     %                         wrkx1,wrky1,wrkz1,
+     %                         Adw_fro_n, Adw_fro_s, Adw_fro_a,
+     %                         Adw_for_n, Adw_for_s, Adw_for_a, 3)
+*
+          deallocate(capx2,capy2,capz2,xpos2,ypos2,zpos2,n2)
+*
+          call adw_exch_1_ad ( wrkx1,wrky1,wrkz1,xt1,wrk_yt1,zt1,
+     %                         wrkc1m_KB(1,it),F_vm_KB(1,it))
+*
+      endif
+*
+      do n = 1,nijk
+         yt1    (n) = wrk_yt1(n) + yt1(n)
+         wrk_yt1(n) = ZERO_8 
+      enddo
+*
+*     Adjoint of
+*     -----------------------------------------------------------------------------------
+*     Part 1 of SETTLS: Evaluate [ 2 V(r_d,t-dt)-V(r_d,t-2dt) ] in wrkx1,wrky1 (U-V only)
+*     -----------------------------------------------------------------------------------
+*     1)  INPUT: F_u,F_v     = 2*V(r,t-dt)-V(r,t-2dt)
+*     2) OUTPUT: wrkx1,wrky1 = 2*V(r,t-dt)-V(r,t-2dt) interpolated at r_d = V_int
+*     ---------------------------------------------------------------------------
+*
+*     ----------------------------
+*     SETTLS VARIANT: A LA RITCHIE
+*     ----------------------------
+      if (Schm_settls_opt.eq.1) then
+*
+*         Adjoint of
+*         Part 3 of SETTLS: Evaluate r_d = b [r - dt/a V_d]
+*         -------------------------------------------------
+          call adw_traj_update_ad (xt1 ,yt1 ,xct1 ,yct1 ,zct1 ,wrkux1 ,wrkuy1 ,wrkuz1 ,
+     %                             wrkux1m_11(ind(it)),wrkuy1m_11(ind(it)),wrkuz1m_11(ind(it)),
+     %                             i0, in, j0, jn, Cstv_dt_8)
+*
+*         Adjoint of
+*         Part 2 of SETTLS: Evaluate V_d = 0.5 * (V_int + V(r,t-dt)) in cartesian coordinates
+*         -----------------------------------------------------------------------------------
+          call adw_traj_addition_ad (wrkux1 ,wrkuy1 ,wrkuz1 ,wrkx1 ,wrky1 ,wu ,wv ,xt1 ,yt1 ,
+     %                               wrkx1m_11(ind(it)),wrky1m_11(ind(it)),xt1m_11(ind(it)),yt1m_11(ind(it)),
+     %                               i0, in, j0, jn)
+*
+*     ---------------------------
+*     SETTLS VARIANT: A LA GIRARD
+*     ---------------------------
+      elseif (Schm_settls_opt.eq.2) then
+*
+*         Adjoint of
+*         Part 3 of SETTLS: Rotate with respect to the great circle defined by V_destination at r_d
+*         -----------------------------------------------------------------------------------------
+*         NOTE: V_destination = 2*V(r_d,t-dt)-V(r_d,t-2dt) at r_d in (wrkx1,wrky1)
+*         ------------------------------------------------------------------------
+*
+*         ------------------------------------------------------------
+*         Reset xt1m yt1m wrkx1m wrky1m xtpm, ytpm for ADJOINT #11
+*         ------------------------------------------------------------
+*
+          call adw_traj_great_circle_2_ad ( xt1, yt1,xct1,yct1,zct1,wrkx1,wrky1,xtp,ytp, 
+     %                                      xt1m_11  (ind(it)),yt1m_11  (ind(it)), 
+     %                                      wrkx1m_11(ind(it)),wrky1m_11(ind(it)),
+     %                                      xtpm_11  (ind(it)),ytpm_11  (ind(it)),
+     %                                      dth, i0,in,j0,jn )
+*
+*         Part 2 of SETTLS: Rotate with respect to the great circle defined by V_arrival at r
+*         -----------------------------------------------------------------------------------
+*         NOTE: V_arrival = V(r,t-dt) in (uth,vth)
+*         ----------------------------------------
+*
+*         TRAJECTORY
+*         ----------
+!$omp parallel do private(n)
+          do k=1,l_nk
+          do j=1,l_nj
+          do i=1,l_ni
+             n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+             rlon(n) = Geomg_x_8(i)
+             rlat(n) = Geomg_y_8(j)
+          enddo
+          enddo
+          enddo
+!$omp end parallel do
+*
+*         ------------------------------------------------------------
+*         Reset wum wvm for ADJOINT #10
+*         ------------------------------------------------------------
+*
+          if (it.eq.1) then
+          call adw_traj_great_circle_1_ad ( xtp , ytp , xctp , yctp , zctp , wu             , wv             ,
+     %                                                                       wum_10(ind(it)), wvm_10(ind(it)),
+     %                                      rlon, rlat, dth,i0,in,j0,jn )
+          endif 
+*
+      endif
+*
+!$omp parallel do private(n)
+      do k=1,l_nk
+      do j=1,l_nj
+      do i=1,l_ni
+         n = l_ni*l_nj*(k-1) + l_ni*(j-1) + i
+*
+         vth(i,j,k) = wv(n) + vth(i,j,k)
+         wv(n)      = 0. 
+         uth(i,j,k) = wu(n) + uth(i,j,k)
+         wu(n)      = 0. 
+*
+      enddo
+      enddo
+      enddo
+!$omp end parallel do
+*
+************************************************************************
+*
+      if (.not.G_lam) then
+*
+         Adw_fro_n = Adw_fro_n_KE2(it)
+         Adw_fro_s = Adw_fro_s_KE2(it)
+         Adw_fro_a = Adw_fro_a_KE2(it)
+*
+          allocate(capx2(max(1,Adw_fro_a)),
+     %             capy2(max(1,Adw_fro_a)),
+     %             capz2(max(1,Adw_fro_a)),
+     %             xpos2(max(1,Adw_fro_a)),
+     %             ypos2(max(1,Adw_fro_a)),
+     %             zpos2(max(1,Adw_fro_a)),
+     %                n2(max(1,Adw_fro_a)))
+*
+*        Zero adjoint variables
+*        ----------------------
+         do n = 1,max(1,Adw_fro_a)
+            capx2(n) = ZERO_8
+            capy2(n) = ZERO_8
+            capz2(n) = ZERO_8
+            xpos2(n) = ZERO_8
+            ypos2(n) = ZERO_8
+            zpos2(n) = ZERO_8
+         enddo
+*
+         Adw_for_n = Adw_for_n_KE3(it)
+         Adw_for_s = Adw_for_s_KE3(it)
+         Adw_for_a = Adw_for_a_KE3(it)
+*
+         if ( Adw_for_a .gt. 0 )
+     %         call adw_exch_3_ad ( wrkx1,wrky1,wrkz1,wrk_yt1,wrkc1,
+     %                                                        wrkc1m_KA(1,it),2)
+*
+          call adw_exch_2_ad ( wrkz1,wrk_yt1,dummy,
+     %                         xpos2,ypos2,  dummy,
+     %                         Adw_for_n, Adw_for_s, Adw_for_a,
+     %                         Adw_fro_n, Adw_fro_s, Adw_fro_a, 2)
+*
+         if ( Adw_fro_a .gt. 0 ) then
+*
+              call adw_trilin_ad ( ypos2,F_v,  1.0,
+     %                             capx2,capy2,capz2,
+     %                                   F_vm, n2m_K1(1,it),
+     %                             capx2m_K1(1,it),capy2m_K1(1,it),capz2m_K1(1,it),
+     %                             Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              call adw_trilin_ad ( xpos2,F_u,  1.0,
+     %                             capx2,capy2,capz2,
+     %                                   F_um,n2m_K1(1,it),
+     %                             capx2m_K1(1,it),capy2m_K1(1,it),capz2m_K1(1,it),
+     %                             Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+              call adw_setint_ad ( n2,   capx2,dummy,dummy,capy2,dummy,
+     %                             dummy,capz2,dummy,xpos2,ypos2,zpos2,
+     %                                               xpos2m_K1(1,it),ypos2m_K1(1,it),zpos2m_K1(1,it),
+     %                             .true.,.true.,.true.,Adw_fro_a,1,Adw_fro_a,1,1,1)
+*
+         endif
+*
+      endif
+*
+*     ----------------------------
+*     NOTE:Uthm Vthm never changed
+*     ----------------------------
+*
+*     Part  I of interpolated wind at xth,yth,zth: Interpolate F_u,F_v_F_w at xt1,yt1,zt1
+*     -----------------------------------------------------------------------------------
+*
+*     -----------------------------------------------
+*     Reset Fn_Im capx1m capy1m capz1m for ADJOINT #1
+*     -----------------------------------------------
+      call adw_trilin_turbo_ad (wrky1, F_v, 1.0, xt1, wrk_yt1, zt1, 
+     %                                 F_vm, 
+     %                          capx1m_1(ind(it)),capy1m_1(ind(it)),capz1m_1(ind(it)),  
+     %                          Fn_I_1(ind(it)),nijk,i0,in,j0,jn,l_nk)
+*
+      call adw_trilin_turbo_ad (wrkx1, F_u, 1.0, xt1, wrk_yt1, zt1, 
+     %                                 F_um, 
+     %                          capx1m_1(ind(it)),capy1m_1(ind(it)),capz1m_1(ind(it)),  
+     %                          Fn_I_1(ind(it)),nijk,i0,in,j0,jn,l_nk)
+*
+      if (G_lam) then
+*
+          call adw_cliptraj_ad ( xt1, wrk_yt1, xt1m_ref1(1,it), wrk_yt1m_ref1(1,it),i0, in, j0, jn, "")
+*
+      else
+*
+          Adw_fro_n = Adw_fro_n_KE1(it)
+          Adw_fro_s = Adw_fro_s_KE1(it)
+          Adw_fro_a = Adw_fro_a_KE1(it)
+*
+          call adw_exch_2_ad ( xpos2,ypos2,zpos2,
+     %                         wrkx1,wrky1,wrkz1,
+     %                         Adw_fro_n, Adw_fro_s, Adw_fro_a,
+     %                         Adw_for_n, Adw_for_s, Adw_for_a, 3)
+*
+          call adw_exch_1_ad ( wrkx1,wrky1,wrkz1,xt1,wrk_yt1,zt1,
+     %                         wrkc1m_KA(1,it),F_vm_KA(1,it))
+*
+          deallocate(capx2,capy2,capz2,xpos2,ypos2,zpos2,n2)
+*
+      endif
+*
+*     ADJ
+*     ---
+!$omp parallel do 
+      do n = 1,nijk
+         yt1    (n) = wrk_yt1(n) + yt1(n)
+         wrk_yt1(n) = ZERO_8
+      enddo
+!$omp end parallel do 
+*
+************************************************************************
+      enddo ! end of iterations loop
+************************************************************************
+*
+      pnerr = vmmuld(-1,0)
+*
+      if (.not.G_lam) then
+          deallocate (  F_vm_KA,   F_vm_KB)
+          deallocate (wrkc1m_KA, wrkc1m_KB)
+          deallocate (capx2m_K1, capx2m_K2)
+          deallocate (capy2m_K1, capy2m_K2)
+          deallocate (capz2m_K1, capz2m_K2)
+          deallocate (xpos2m_K1, xpos2m_K2)
+          deallocate (ypos2m_K1, ypos2m_K2)
+          deallocate (zpos2m_K1, zpos2m_K2)
+          deallocate (   n2m_K1,    n2m_K2)
+      endif
+*
+ 1000 format(3X,'ADJ of CALC UPSTREAM POSITIONS: (S/R ADW_MAIN_2_POS_SETTLS_AD)')
+*
+      return
+      end

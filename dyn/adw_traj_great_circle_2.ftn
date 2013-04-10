@@ -1,0 +1,154 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_traj_great_circle_2 - improves estimates of DESTINATION positions (Great circle 2 in SETTLS A LA GIRARD) 
+*                                (Based on adw_trajsp)
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_traj_great_circle_2 ( F_lon_d, F_lat_d, F_x_d, F_y_d, F_z_d, 
+     %                                     F_u_d, F_v_d, F_lon_a, F_lat_a, F_dt,i0,in,j0,jn )
+*
+      implicit none
+*
+      real F_lon_d(*),F_lat_d(*),F_x_d(*),F_y_d(*),F_z_d(*),F_u_d(*),F_v_d(*),F_dt
+      real F_lon_a(*),F_lat_a(*)
+      integer i0,in,j0,jn
+*
+*author M.Tanguay
+*
+*revision
+* v3_35 - Tanguay M.      - initial MPI version
+* v3_35 - Tanguay M.      - SETTLS option a la Ritchie/Girard 
+*
+*object
+*     see id section (Based on adw_trajsp)
+*
+*implicits
+#include "glb_ld.cdk"
+#include "adw.cdk"
+#include "dcst.cdk"
+************************************************************************
+      integer n, ij, nij,vnij, i,j,k
+*
+      real*8  sa_8, ca_8, cai_8, so_8, co_8, x_8, y_8, z_8, w_8,
+     %        ux_8, uy_8, uz_8, sinal_8, cosal_8, r2pi_8, TWO_8
+      real*8  xsin_8(i0:in,j0:jn),  ysin_8(i0:in,j0:jn)
+      real*8 xasin_8(i0:in,j0:jn), yasin_8(i0:in,j0:jn)
+      real*8 xatan_8(i0:in,j0:jn), yatan_8(i0:in,j0:jn), zatan_8(i0:in,j0:jn)
+      parameter (TWO_8 = 2.0)
+************************************************************************
+      nij  = l_ni*l_nj
+      vnij = (in-i0+1)*(jn-j0+1)
+*
+      r2pi_8 = TWO_8 * Dcst_pi_8
+************************************************************************
+*
+!$omp parallel do private(ysin_8,xasin_8,xatan_8,yatan_8,
+!$omp&  zatan_8,yasin_8,xsin_8,n,ij,x_8,y_8,z_8,w_8,sa_8,ca_8,
+!$omp&  cai_8,so_8,co_8,ux_8,uy_8,uz_8,sinal_8,cosal_8)
+*
+      do k=1,l_nk
+         do j=j0,jn
+         do i=i0,in
+            n = (k-1)*nij + ((j-1)*l_ni) + i
+            xsin_8(i,j) = sqrt( F_u_d(n) ** 2 + F_v_d(n) ** 2 ) * F_dt
+         end do
+         end do
+         call vsin(ysin_8, xsin_8, vnij)
+*
+         do j=j0,jn
+         do i=i0,in
+             n = (k-1)*nij + ((j-1)*l_ni) + i
+            ij = mod( n-1, nij ) + 1
+************************************************************************
+* cartesian coordinates of ARRIVAL grid points                         *
+************************************************************************
+           x_8 = cos(F_lon_a(n)) 
+           y_8 = sin(F_lon_a(n)) 
+           z_8 = sin(F_lat_a(n)) 
+           w_8 = cos(F_lat_a(n))
+c          x_8 = x_8 * cos(F_lat_a(n)) 
+c          y_8 = y_8 * cos(F_lat_a(n)) 
+           x_8 = x_8 * w_8 
+           y_8 = y_8 * w_8 
+************************************************************************
+* if very small wind set DESTINATION grid point to ARRIVAL grid point  *
+************************************************************************
+           if ( abs(F_u_d(n))+abs(F_v_d(n)) .lt. 1.e-10 ) then
+                F_x_d(n) = x_8
+                F_y_d(n) = y_8
+                F_z_d(n) = z_8
+                goto 99
+           endif
+************************************************************************
+* sin and cosin of first guess of DESTINATION positions                *
+************************************************************************
+           sa_8  = sin(F_lat_d(n)) 
+           ca_8  = cos(F_lat_d(n))
+           so_8  = sin(F_lon_d(n)) 
+           co_8  = cos(F_lon_d(n)) 
+************************************************************************
+* wind components in cartesian coordinate at DESTINATION positions     *    
+************************************************************************
+           ux_8 = ( - F_u_d(n) * so_8 - F_v_d(n) * co_8 * sa_8 )
+           uy_8 = (   F_u_d(n) * co_8 - F_v_d(n) * so_8 * sa_8 )
+           uz_8 =     F_v_d(n) * ca_8
+*
+*          Evaluate - r_a x (r_a x V_d) 
+*          ----------------------------
+           sinal_8 = x_8 * ux_8 + y_8 * uy_8 + z_8 * uz_8
+           ux_8 = ux_8 - x_8 * sinal_8
+           uy_8 = uy_8 - y_8 * sinal_8
+           uz_8 = uz_8 - z_8 * sinal_8
+*
+           cosal_8 = sqrt( ( 1.0 + ysin_8(i,j) ) * ( 1.0 - ysin_8(i,j) ) )
+           sinal_8 = ysin_8(i,j) /
+     %          sqrt( ux_8 * ux_8 + uy_8 * uy_8 + uz_8 * uz_8 )
+*
+*          Evaluate r_d = cos(A) r_a + sin (A) r_a x (r_a x V_d) /|r_a x (r_a x V_d)|
+*          --------------------------------------------------------------------------
+           F_x_d(n) = cosal_8 * x_8 - sinal_8 * ux_8
+           F_y_d(n) = cosal_8 * y_8 - sinal_8 * uy_8
+           F_z_d(n) = cosal_8 * z_8 - sinal_8 * uz_8
+   99      F_z_d(n) = min(1.0D0,max(1.0d0*F_z_d(n),-1.0D0))
+*
+           xasin_8(i,j) = F_z_d(n)
+           xatan_8(i,j) = F_x_d(n)
+           yatan_8(i,j) = F_y_d(n)
+*           
+         enddo
+         enddo
+*
+         call vasin  ( yasin_8, xasin_8,          vnij )
+         call vatan2 ( zatan_8, yatan_8, xatan_8, vnij )
+*
+         do j=j0,jn
+         do i=i0,in
+*
+*           Evaluate (lon_d,lat_d) of r_d
+*           -----------------------------
+            n = (k-1)*nij + ((j-1)*l_ni) + i
+            F_lat_d(n) = yasin_8(i,j)
+            F_lon_d(n) = zatan_8(i,j) 
+            if ( F_lon_d(n) .lt. 0.0 ) F_lon_d(n) = F_lon_d(n) + r2pi_8
+*
+         end do   
+         end do   
+      enddo
+!$omp end parallel do
+*
+      return
+      end

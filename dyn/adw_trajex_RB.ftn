@@ -1,0 +1,267 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_trajex_RB - Ritchie/Beaudoin 1994 estimation of positions (DEPARTURE)
+*                      (Based on adw_trajex GEM3 and adx_trajex_gccsa GEM4 of A.Qaddouri)
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_trajex_RB ( F_xto,  F_yto,  F_xcto, F_ycto,
+     %                           F_zcto, F_xctm, F_yctm, F_zctm, F_u, F_v,
+     %                           F_dt,i0,in,j0,jn)
+*
+#include "impnone.cdk"
+*
+      real   F_xto (*), F_yto (*), F_xcto(*), F_ycto(*),
+     %       F_zcto(*), F_xctm(*), F_yctm(*), F_zctm(*),F_u(*),F_v(*),F_dt
+      integer i0,in,j0,jn
+*
+*author Tanguay/Qaddouri
+*
+*revision
+* v3_35 - Tanguay/Qaddouri  - initial MPI version
+* v3_35 - Tanguay/Qaddouri  - Ritchie/Beaudoin estimation of positions 
+*
+*object
+*     see id section
+*
+*arguments
+*______________________________________________________________________
+*              |                                                 |     |
+* NAME         | DESCRIPTION                                     | I/O |
+*--------------|-------------------------------------------------|-----|
+*              |                                                 |     |
+* F_xto        | upstream x positions at origin                  |  o  |
+* F_yto        | upstream y positions at origin                  |  o  |
+* F_xcto       | upstream x cartesian positions at origin        |  o  |
+* F_ycto       | upstream y cartesian positions at origin        |  o  |
+* F_zcto       | upstream z cartesian positions at origin        |  o  |
+* F_xctm       | upstream x cartesian positions at mid-traj.     |  i  |
+* F_yctm       | upstream y cartesian positions at mid-traj.     |  i  |
+* F_zctm       | upstream z cartesian positions at mid-traj.     |  i  |
+* F_u          | real E-W wind components at upwind positions    |  i  |
+* F_v          | real N-S wind components at upwind positions    |  i  |
+* F_dt         | timestep lenght                                 |  i  |
+*______________|_________________________________________________|_____|
+*
+*implicits
+#include "glb_ld.cdk"
+#include "adw.cdk"
+#include "dcst.cdk"
+#include "geomg.cdk"
+************************************************************************
+      integer i,j,k,n,ij,nij
+*
+      real*8 :: One_ov_Six_8,Seven_ov_Six_8,Two_ov_Three_8,term_ord3_8,rad2deg_8,CLXXX_8
+      real*8 :: xto_8((in-i0+1)*(jn-j0+1))
+      real*8 :: yto_8((in-i0+1)*(jn-j0+1))
+      real*8 :: cos_yto_8((in-i0+1)*(jn-j0+1))
+      real*8 :: sin_yto_8((in-i0+1)*(jn-j0+1))
+      real*8 :: cos_xto_8((in-i0+1)*(jn-j0+1))
+      real*8 :: sin_xto_8((in-i0+1)*(jn-j0+1))
+*
+      real*8 prx, pry, prz, prdot2, r2pi_8, two
+      real*8 xasin((in-i0+1)*(jn-j0+1)), yasin((in-i0+1)*(jn-j0+1))
+      real*8 xatan((in-i0+1)*(jn-j0+1)), yatan((in-i0+1)*(jn-j0+1)), zatan((in-i0+1)*(jn-j0+1))
+*
+      parameter (two = 2.0)
+      parameter( CLXXX_8 = 180.0 )
+*
+      logical done_L
+      integer j_south,j_north,pole,p1,p2,j1,j2,loc 
+      data done_L /.false./
+      save done_L
+      common/info_trajex_RB/j_south,j_north,p1,p2 
+*
+************************************************************************
+      nij  = l_ni*l_nj
+*
+      r2pi_8 = two * Dcst_pi_8
+*
+      One_ov_Six_8   = 1.0D0/6.0D0
+      Seven_ov_Six_8 = 7.0D0/6.0D0
+      Two_ov_Three_8 = 2.0D0/3.0D0
+
+      rad2deg_8      = CLXXX_8/Dcst_pi_8
+*
+*     --------------------------------------------
+*     LOCALISATION OF RITCHIE/BEAUDOIN restriction
+*     --------------------------------------------
+      if(.NOT.done_L) then
+
+         j_north = j0-1
+         do j=jn,j0,-1
+            if (Geomg_y_8(j)*rad2deg_8.GT.80.) cycle
+                j_north = j
+                goto 1001
+         enddo
+ 1001    continue
+
+         j_south = jn+1 
+         do j=j0,jn
+            if (Geomg_y_8(j)*rad2deg_8.LT.-80.) cycle
+                j_south = j
+                goto 1002
+         enddo
+ 1002    continue
+
+         done_L = .TRUE.
+
+         if (j_south.gt.j0) then
+             p1 = 1
+         else
+             p1 = 2
+         endif
+         if (j_north.lt.jn) then
+             p2 = 2
+         else
+             p2 = 1
+         endif
+
+      endif
+*
+!$omp parallel private(term_ord3_8,n,ij,xto_8,yto_8, 
+!$omp&   cos_xto_8,sin_xto_8,cos_yto_8,sin_yto_8,
+!$omp&   xasin,yasin,xatan,yatan,zatan,prx,pry,prz,prdot2,
+!$omp&   pole,j1,j2,loc) shared(p1,p2,j_south,j_north)
+*
+!$omp do
+      do k=1,l_nk
+
+*        ---------------------------------------------------------
+*        BETWEEN POLES
+*        ---------------------------------------------------------
+         loc = 0
+
+         do j=j_south,j_north
+         do i=i0,in
+ 
+            n   = (k-1)*nij+((j-1)*l_ni) + i
+
+            loc = loc + 1
+
+            term_ord3_8 = (F_u(n)*F_dt)**2 * Adw_tgy_8(j)**2 * One_ov_Six_8  + 
+     &                    (F_v(n)*F_dt)**2 * (2.0D0 * Adw_scy_8(j)**2 - Seven_ov_Six_8)     
+
+            xto_8(loc)  = Adw_xa_8(i)                                                  
+     &                    - (F_u(n)*F_dt) * 2.0D0 * Adw_scy_8(j) *                                             
+     &                    ( 1.0D0 - (F_v(n)*F_dt) * Adw_tgy_8(j) + term_ord3_8 )                                                            
+
+            if (xto_8(loc) < 0.    ) xto_8(loc) = xto_8(loc) + r2pi_8 
+
+            if (xto_8(loc) > r2pi_8) xto_8(loc) = xto_8(loc) - r2pi_8 
+
+            F_xto(n)=xto_8(loc)
+
+            yto_8(loc)  = Adw_ya_8(j) - 2.0D0*F_v(n)*F_dt                                                          
+     &                    + (F_u(n)*F_dt)**2 * (F_v(n)*F_dt) * (Adw_scy_8(j)**2 - Two_ov_Three_8)                        
+
+            F_yto(n)=yto_8(loc)
+
+         enddo
+         enddo
+
+         call vcos  (cos_xto_8,xto_8,(in-i0+1)*(j_north-j_south+1))
+         call vcos  (cos_yto_8,yto_8,(in-i0+1)*(j_north-j_south+1))
+         call vsin  (sin_xto_8,xto_8,(in-i0+1)*(j_north-j_south+1))
+         call vsin  (sin_yto_8,yto_8,(in-i0+1)*(j_north-j_south+1))
+
+         loc = 0
+
+         do j=j_south,j_north
+         do i=i0,in
+
+            n   = (k-1)*nij+((j-1)*l_ni) + i
+
+            loc = loc + 1
+
+            F_xcto(n) = cos_xto_8(loc)*cos_yto_8(loc)
+            F_ycto(n) = cos_yto_8(loc)*sin_xto_8(loc)
+            F_zcto(n) = sin_yto_8(loc)
+
+         enddo
+         enddo
+
+*        ---------------------------------------------------------
+*        CLOSE TO POLES
+*        ---------------------------------------------------------
+         do pole = p1,p2  
+
+            if (pole.eq.1) then
+                j1 = j0 
+                j2 = j_south -1 
+            else
+                j1 = j_north +1 
+                j2 = jn 
+            endif
+
+            loc = 0
+
+            do j=j1,j2
+            do i=i0,in
+
+               n  = (k-1)*nij+((j-1)*l_ni) + i
+               ij = mod( n-1, nij ) + 1
+
+               loc = loc + 1
+
+               pry = dble(Adw_cy2d_8(ij))
+               prx = dble(Adw_cx2d_8(ij)) * pry
+               pry = dble(Adw_sx2d_8(ij)) * pry
+               prz = dble(Adw_sy2d_8(ij))
+*
+               prdot2 = 2.0 * ( prx * dble(F_xctm(n)) +
+     %                          pry * dble(F_yctm(n)) +
+     %                          prz * dble(F_zctm(n)) )
+*
+               F_xcto(n) = prdot2 * dble(F_xctm(n)) - prx
+               F_ycto(n) = prdot2 * dble(F_yctm(n)) - pry
+               F_zcto(n) = prdot2 * dble(F_zctm(n)) - prz
+*
+               xatan(loc) = F_xcto(n)
+               yatan(loc) = F_ycto(n)
+               xasin(loc) = max(-1.,min(1.,F_zcto(n)))
+*
+            enddo
+            enddo
+*
+            call vatan2(zatan, yatan, xatan,(in-i0+1)*(j2-j1+1))
+            call vasin (yasin, xasin,       (in-i0+1)*(j2-j1+1))
+
+            loc = 0
+
+            do j=j1,j2
+            do i=i0,in
+
+               n = (k-1)*nij+((j-1)*l_ni) + i
+
+               loc = loc + 1
+ 
+               F_xto(n) = zatan(loc)
+               F_yto(n) = yasin(loc)
+
+               if ( F_xto(n) .lt. 0.0 ) F_xto(n) = F_xto(n) + r2pi_8
+ 
+            enddo
+            enddo
+
+         enddo
+
+      enddo
+!$omp enddo
+!$omp end parallel
+*
+      return
+      end

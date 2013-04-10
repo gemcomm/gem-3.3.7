@@ -1,0 +1,219 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_traj_midpoint_ad - ADJ of adw_traj_midpoint_tl 
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_traj_midpoint_ad ( F_xtm,F_ytm,F_xctm,F_yctm,F_zctm,F_xcto , F_ycto  , F_zcto  ,
+     %                                                                   F_xcto_m,F_ycto_m, F_zcto_m,
+     %                                  i0,in,j0,jn)
+*
+      implicit none
+*
+      real   F_xtm (*), F_ytm (*), F_xctm(*), F_yctm(*), F_zctm(*),
+     %       F_xcto(*), F_ycto(*), F_zcto(*)
+*
+      real   
+     %       F_xcto_m(*), F_ycto_m(*), F_zcto_m(*)
+*
+      integer i0,in,j0,jn
+*
+*author M.Tanguay
+*
+*revision
+* v3_35 - Tanguay M.      - initial MPI version
+* v3_35 - Tanguay M.      - SETTLS option a la Ritchie/Girard
+*
+*object
+*     see id section
+*
+*ADJ of
+*arguments
+*______________________________________________________________________
+*              |                                                 |     |
+* NAME         | DESCRIPTION                                     | I/O |
+*--------------|-------------------------------------------------|-----|
+*              |                                                 |     |
+* F_xtm        | upstream x positions at mid-traj.               |  o  |
+* F_ytm        | upstream y positions at mid-traj.               |  o  |
+* F_xctm       | upstream x cartesian positions at mid-traj.     |  o  |
+* F_yctm       | upstream y cartesian positions at mid-traj.     |  o  |
+* F_zctm       | upstream z cartesian positions at mid-traj.     |  o  |
+* F_xcto       | upstream x cartesian positions at origin        |  i  |
+* F_ycto       | upstream y cartesian positions at origin        |  i  |
+* F_zcto       | upstream z cartesian positions at origin        |  i  |
+*______________|_________________________________________________|_____|
+*
+*implicits
+#include "glb_ld.cdk"
+#include "adw.cdk"
+#include "dcst.cdk"
+*
+************************************************************************
+      integer i,j,k, n, ij, nij
+*
+      real*8 prx_8, pry_8, prz_8, prnorm_8, inv_prnorm_8, r2pi_8, TWO_8, ZERO_8, 
+     %       p_xctm_8, p_yctm_8, p_zctm_8    
+*
+      parameter (TWO_8  = 2.0)
+      parameter (ZERO_8 = 0.0)
+*
+      real*8 prnorm_m_8, inv_prnorm_m_8,
+     %       p_xctm_m_8, p_yctm_m_8, p_zctm_m_8 
+*
+      real*8 sminm_8, rsminm_8, xym_8, rxym_8
+*
+      real minmax, minmax_m, nodiv0_m
+*
+      real F_xctm_m, F_yctm_m, F_zctm_m
+*
+************************************************************************
+      nij  = l_ni*l_nj
+*
+      r2pi_8 = TWO_8 * Dcst_pi_8
+*
+************************************************************************
+*
+!$omp parallel private(n,ij,prx_8,pry_8,prz_8,prnorm_8,inv_prnorm_8,
+!$omp&      p_xctm_8,p_yctm_8,p_zctm_8,
+!$omp&      prnorm_m_8,inv_prnorm_m_8,
+!$omp&      p_xctm_m_8,p_yctm_m_8,p_zctm_m_8,
+!$omp&      F_xctm_m,F_yctm_m,F_zctm_m,minmax,minmax_m,nodiv0_m,
+!$omp&      sminm_8,rsminm_8,xym_8,rxym_8)
+*
+*     Zero adjoint variables
+*     ----------------------
+      minmax       = ZERO_8
+      prnorm_8     = ZERO_8
+      inv_prnorm_8 = ZERO_8
+      p_xctm_8     = ZERO_8
+      p_yctm_8     = ZERO_8
+      p_zctm_8     = ZERO_8
+*
+!$omp do 
+      do k=1,l_nk
+*
+         do j=j0,jn
+         do i=i0,in
+*
+         n = (k-1)*nij+((j-1)*l_ni) + i
+*
+         ij = mod( n-1, nij ) + 1
+*
+*        START REBUILD TRAJECTORY
+*        ------------------------
+         pry_8 = dble(Adw_cy2d_8(ij))
+         prx_8 = dble(Adw_cx2d_8(ij)) * pry_8
+         pry_8 = dble(Adw_sx2d_8(ij)) * pry_8
+         prz_8 = dble(Adw_sy2d_8(ij))
+*
+         p_xctm_m_8 = 0.5 * (dble(F_xcto_m(n)) + prx_8)
+         p_yctm_m_8 = 0.5 * (dble(F_ycto_m(n)) + pry_8)
+         p_zctm_m_8 = 0.5 * (dble(F_zcto_m(n)) + prz_8)
+*
+         prnorm_m_8 = sqrt( p_xctm_m_8 * p_xctm_m_8 +
+     %                      p_yctm_m_8 * p_yctm_m_8 +
+     %                      p_zctm_m_8 * p_zctm_m_8 )
+
+         inv_prnorm_m_8 = 1.0/prnorm_m_8
+*
+         F_xctm_m = p_xctm_m_8 * inv_prnorm_m_8
+         F_yctm_m = p_yctm_m_8 * inv_prnorm_m_8
+         F_zctm_m = p_zctm_m_8 * inv_prnorm_m_8
+*
+         xym_8  = F_xctm_m*F_xctm_m + F_yctm_m*F_yctm_m
+*
+         rxym_8 = 1.0D0/xym_8
+*
+*        NOTE: nodiv0_m is used to allow valid 1/smin_8
+*        ----------------------------------------------
+         minmax_m = F_zctm_m
+         nodiv0_m = minmax_m
+         if (F_zctm_m.ge.1.) then
+C            minmax_m = 1.
+             nodiv0_m = 0.
+         elseif (F_zctm_m.le.-1.) then
+C            minmax_m =-1.
+             nodiv0_m = 0.
+         endif
+*
+         sminm_8  = sqrt( 1.0-nodiv0_m*nodiv0_m )
+*
+         rsminm_8 = 1.0D0/sminm_8
+*
+*        END REBUILD TRAJECTORY
+*        ----------------------
+*
+*        The following min statement is expanded as two IF blocks:
+*        minmax_m = max(-1.,min(1.,p_zctm_m))
+*
+*        ADJ
+*        ---
+         if (F_zctm_m.ge.1.) then
+             F_ytm(n) = 0.
+C            minmax   = 0.
+         elseif (F_zctm_m.le.-1.) then
+             F_ytm(n) = 0.
+C            minmax   = 0.
+         else
+C            minmax   = F_ytm(n) * rsminm_8 + minmax
+             minmax   = F_ytm(n) * rsminm_8
+             F_ytm(n) = ZERO_8
+         endif
+*
+         F_zctm(n) = minmax + F_zctm(n)
+C        minmax    = ZERO_8
+*
+         F_yctm(n) = (  F_xtm(n) * F_xctm_m) * rxym_8 + F_yctm(n) 
+         F_xctm(n) = (- F_yctm_m * F_xtm(n)) * rxym_8 + F_xctm(n)
+         F_xtm (n) = ZERO_8
+*
+         p_zctm_8     = F_zctm(n)  * inv_prnorm_m_8 + p_zctm_8 
+         inv_prnorm_8 = p_zctm_m_8 * F_zctm(n)      + inv_prnorm_8
+         F_zctm(n)    = 0.0
+*
+         p_yctm_8     = F_yctm(n)  * inv_prnorm_m_8 + p_yctm_8
+         inv_prnorm_8 = p_yctm_m_8 * F_yctm(n)      + inv_prnorm_8
+         F_yctm(n)    = 0.
+*
+         p_xctm_8     = F_xctm(n)  * inv_prnorm_m_8 + p_xctm_8
+         inv_prnorm_8 = p_xctm_m_8 * F_xctm(n)      + inv_prnorm_8
+         F_xctm(n)    = 0.
+*
+         prnorm_8     = - inv_prnorm_8 * inv_prnorm_m_8**2  + prnorm_8
+         inv_prnorm_8 = 0. 
+*
+         p_xctm_8 = ( prnorm_8 * p_xctm_m_8 ) * inv_prnorm_m_8 + p_xctm_8
+         p_yctm_8 = ( prnorm_8 * p_yctm_m_8 ) * inv_prnorm_m_8 + p_yctm_8
+         p_zctm_8 = ( prnorm_8 * p_zctm_m_8 ) * inv_prnorm_m_8 + p_zctm_8 
+         prnorm_8 = 0.
+*
+         F_xcto(n) = 0.5 * p_xctm_8 + F_xcto(n)
+         F_ycto(n) = 0.5 * p_yctm_8 + F_ycto(n) 
+         F_zcto(n) = 0.5 * p_zctm_8 + F_zcto(n)
+         p_xctm_8  = 0.0
+         p_yctm_8  = 0.0
+         p_zctm_8  = 0.0
+*
+      enddo
+      enddo
+      enddo
+!$omp enddo
+
+!$omp end parallel
+*
+      return
+      end

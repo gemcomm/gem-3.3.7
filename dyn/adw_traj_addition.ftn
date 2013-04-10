@@ -1,0 +1,109 @@
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+***s/r adw_traj_addition - Evaluate V_d = 0.5 * (V_int + V(r,t-dt)) in cartesian coordinates
+*                          (Based on adw_trajsp/adw_trajex)
+*
+#include "model_macros_f.h"
+*
+      subroutine adw_traj_addition ( F_ux_d, F_uy_d, F_uz_d, F_u_int, F_v_int, F_u, F_v,
+     %                               F_lon_d, F_lat_d, i0, in, j0, jn)
+*
+      implicit none
+*
+      real F_ux_d(*),F_uy_d(*),F_uz_d(*),F_u_int(*),F_v_int(*),F_u(*),F_v(*),F_lon_d(*),F_lat_d(*)
+*
+      integer i0,in,j0,jn
+*
+*author M.Tanguay
+*
+*revision
+* v3_35 - Tanguay M.      - initial MPI version
+* v3_35 - Tanguay M.      - SETTLS option a la Ritchie/Girard 
+*
+*object
+*     see id section (Based on adw_trajsp/adw_trajex)
+*
+*arguments
+*______________________________________________________________________
+*              |                                                 |     |
+* NAME         | DESCRIPTION                                     | I/O |
+*--------------|-------------------------------------------------|-----|
+* F_ux_d       | wind components cartesian X                     |  o  |
+* F_uy_d       | wind components cartesian Y                     |  o  |
+* F_uz_d       | wind components cartesian Z                     |  o  |
+* F_u_int      | real E-W wind components at r_d                 |  i  |
+* F_v_int      | real N-S wind components at r_d                 |  i  |
+* F_u          | real E-W wind components at r                   |  i  |
+* F_v          | real N-S wind components at r                   |  i  |
+* F_lon_d      | upwind longitudes at t-dt                       |  i  |
+* F_lat_d      | upwind latitudes  at t-dt                       |  i  |
+*______________|_________________________________________________|_____|
+*
+*implicits
+#include "glb_ld.cdk"
+#include "geomg.cdk"
+#include "adw.cdk"
+*     ------------------------------------------------------------
+      integer i,j,k,n,nij
+*
+      real*8 ux_d_8,uy_d_8,uz_d_8,ux_8,uy_8,uz_8,a_8,b_8,c_8,d_8
+*     ------------------------------------------------------------
+*
+      nij = l_ni*l_nj
+*
+!$omp parallel do private (n,ux_d_8,uy_d_8,uz_d_8,ux_8,uy_8,uz_8,
+!$omp$                     a_8,b_8,c_8,d_8)
+      do k=1,l_nk
+*
+         do j=j0,jn
+         do i=i0,in
+*
+         n = (k-1)*nij + ((j-1)*l_ni) + i
+*
+         a_8 = sin(F_lon_d(n))  
+         b_8 = cos(F_lon_d(n)) 
+         c_8 = sin(F_lat_d(n))
+         d_8 = cos(F_lat_d(n))
+*
+*        Wind components V_int in cartesian coordinates at position r_d       
+*        --------------------------------------------------------------
+C        ux_d_8 = - F_u_int(n) * sin(F_lon_d(n)) - F_v_int(n) * cos(F_lon_d(n)) * sin(F_lat_d(n)) 
+C        uy_d_8 =   F_u_int(n) * cos(F_lon_d(n)) - F_v_int(n) * sin(F_lon_d(n)) * sin(F_lat_d(n))
+C        uz_d_8 =   F_v_int(n) * cos(F_lat_d(n))
+         ux_d_8 = - F_u_int(n) * a_8 - F_v_int(n) * b_8 * c_8 
+         uy_d_8 =   F_u_int(n) * b_8 - F_v_int(n) * a_8 * c_8 
+         uz_d_8 =   F_v_int(n) * d_8 
+*
+*        Wind components V_r in cartesian coordinates at position r      
+*        ----------------------------------------------------------
+         ux_8  = - F_u(n) * Geomg_sx_8(i) - F_v(n) * Geomg_cx_8(i) * Geomg_sy_8(j)
+         uy_8  =   F_u(n) * Geomg_cx_8(i) - F_v(n) * Geomg_sx_8(i) * Geomg_sy_8(j)
+         uz_8  =   F_v(n) * Geomg_cy_8(j)
+*
+*        Evaluate V_d = 0.5 * (V_int + V(r,t-dt)) in cartesian coordinates
+*        -----------------------------------------------------------------
+         F_ux_d(n) = 0.5 * ( ux_d_8 + ux_8 ) 
+         F_uy_d(n) = 0.5 * ( uy_d_8 + uy_8 ) 
+         F_uz_d(n) = 0.5 * ( uz_d_8 + uz_8 ) 
+*
+         enddo
+         enddo
+*
+      enddo
+!$omp end parallel do
+*
+      return
+      end
