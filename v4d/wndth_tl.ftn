@@ -28,6 +28,7 @@
 * v2_10 - Tanguay M.        - initial MPI version
 * v3_20 - Tanguay M.        - 1d higher order diffusion operator 
 * v3_35 - Tanguay M.        - TL/AD correction wndth in nesting zone
+* v3_37 - Tanguay M.        - Filtering at numerical poles
 *
 *object
 *     see id section
@@ -103,13 +104,13 @@
 *
 *     Filtering
 *     ---------
-      if (Hzd_t0_0_L) call hzd_hoffld (ut0m,  LDIST_DIM, G_nk, 1)
-      if (Hzd_t0_0_L) call hzd_hoffld (vt0m,  LDIST_DIM, G_nk, 2)
-      if (Hzd_t0_0_L) call hzd_hoffld (psdt0m,LDIST_DIM, G_nk, 3)
+      if (Hzd_t0_0_L) call hzd_hoffld (ut0m,  LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t0_0_L) call hzd_hoffld (vt0m,  LDIST_DIM, G_nk, 2, .FALSE.)
+      if (Hzd_t0_0_L) call hzd_hoffld (psdt0m,LDIST_DIM, G_nk, 3, .FALSE.)
 *
-      if (Hzd_t0_1_L) call hzd_hoffld (ut0,   LDIST_DIM, G_nk, 1)
-      if (Hzd_t0_1_L) call hzd_hoffld (vt0,   LDIST_DIM, G_nk, 2)
-      if (Hzd_t0_1_L) call hzd_hoffld (psdt0, LDIST_DIM, G_nk, 3)
+      if (Hzd_t0_1_L) call hzd_hoffld (ut0,   LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t0_1_L) call hzd_hoffld (vt0,   LDIST_DIM, G_nk, 2, .FALSE.)
+      if (Hzd_t0_1_L) call hzd_hoffld (psdt0, LDIST_DIM, G_nk, 3, .FALSE.)
 *
 *
 *C       1.    Perform the averaging

@@ -39,6 +39,7 @@
 * v3_22 - Tanguay M.        - Change positioning of hzd_hoffld for psd 
 * v3_30 - Lee V.            - remove call to rpn_comm_xch
 * v3_31 - Bilodeau B.       - Offline mode
+* v3_37 - Tanguay M.        - Filtering at numerical poles
 *
 *object
 *	Performs preprocessing of the data: part1. We compute:
@@ -135,8 +136,8 @@
           call vtap
       endif
 *
-      if (Hzd_t1_0_L) call hzd_hoffld (Ind_u,   LDIST_DIM, G_nk, 1)
-      if (Hzd_t1_0_L) call hzd_hoffld (Ind_v,   LDIST_DIM, G_nk, 2)
+      if (Hzd_t1_0_L) call hzd_hoffld (Ind_u,   LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t1_0_L) call hzd_hoffld (Ind_v,   LDIST_DIM, G_nk, 2, .FALSE.)
 *
       if (.not.Schm_offline_L) then
       call uv2tdpsd ( Ind_td,Ind_psd,Ind_u,Ind_v,Ind_s,LDIST_DIM,l_nk )
@@ -147,7 +148,7 @@ c    $                                         1+acid_j0,G_nj-acid_jn,1,G_nk)
 c     call glbstat (Ind_td,'I_td',LDIST_DIM,G_nk,1+acid_i0,G_ni-acid_in,
 c    $                                         1+acid_j0,G_nj-acid_jn,1,G_nk)
 
-      if (Hzd_t1_0_L) call hzd_hoffld (Ind_psd, LDIST_DIM, G_nk, 3)
+      if (Hzd_t1_0_L) call hzd_hoffld (Ind_psd, LDIST_DIM, G_nk, 3, .FALSE.)
 *
       if ( .not. Schm_hydro_L ) then
          if ( Schm_theoc_L ) then

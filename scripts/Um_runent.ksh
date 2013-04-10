@@ -84,16 +84,12 @@ ${GEOPHY_cfg}
 # model_settings_template   ::PWD::/::MODEL::_settings.nml
 ${CONSTANTES_cfg}
 # </input>
-#
 # <executables>
 # ATM_NTR.Abs      ::PWD::/main::MODEL::ntr_::BASE_ARCH::_::MODEL_VERSION::.Abs
 ${FETCHNML_cfg}
 ${CMCLOG_cfg}
 ${UM_NTR_cfg}
 # </executables>
-#
-# <configs>
-# </configs> 
 # <output>
 # </output> 
 #############################################
@@ -109,9 +105,9 @@ echo "\n#############################################"
 
 # Set up working directory
 if [ ${no_setup} = 0 ] ; then
-  echo "\n##### EXECUTING TASK_SETUP #####"
-  /bin/rm -f ${TASK_BASEDIR}/.resetenv ${TASK_WORK}/.resetenv
-  ${TASK_SETUP:-task_setup-0.4.4.py} -f $CFGFILE --base $TASK_BASEDIR --clean
+  echo "\n##### EXECUTING TASK_SETUP #####" 
+  /bin/rm -rf ${TASK_BASEDIR}/.resetenv ${TASK_WORK}/.resetenv ${TASK_BASEDIR}/.setup
+  ${TASK_SETUP:-task_setup-0.7.7.py} -f $CFGFILE --base $TASK_BASEDIR --clean
   if [ $? = 1 ] ; then . Um_aborthere.ksh "PROBLEM with task_setup.py" ; fi
 fi
 

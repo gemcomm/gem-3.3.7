@@ -84,15 +84,15 @@ else
     OUTCFG_cfg="# output_settings   ::PWD::/outcfg.out"
   fi
   CONSTANTES_cfg="# $fn_const ::AFSISIO::/datafiles/constants/thermoconsts"
-  if [ -s $fn_const ] ; then
+  if [ -s ${TASK_BASEDIR}_upload/input/$fn_const -o -s $fn_const ] ; then
     CONSTANTES_cfg="# $fn_const ::PWD::/::fn_const::"
   fi
   OZONE_cfg="# $fn_ozone"
-  if [ -s $fn_ozone ] ; then
+  if [ -s ${TASK_BASEDIR}_upload/input/$fn_ozone -o -s $fn_ozone ] ; then
     OZONE_cfg="# $fn_ozone ::PWD::/$fn_ozone"
   fi
   IRTAB_cfg="# $fn_irtab ::AFSISIO::/datafiles/constants/irtab5_std"
-  if [ -s $fn_irtab ] ; then
+  if [ -s ${TASK_BASEDIR}_upload/input/$fn_irtab -o -s $fn_irtab ] ; then
     IRTAB_cfg="# $fn_irtab ::PWD::/$fn_irtab"
   fi
 #===> executables
@@ -116,7 +116,6 @@ ${IRTAB_cfg}
 ${OUTCFG_cfg}
 ${NMLCPL_cfg}
 # </input>
-#
 # <executables>
 # ATM_MOD.Abs      ::PWD::/main::MODEL::dm_::BASE_ARCH::_::MODEL_VERSION::.Abs
 ${FETCHNML_cfg}
@@ -124,10 +123,6 @@ ${CMCLOG_cfg}
 ${UM_MOD_cfg}
 ${MPIRUN_cfg}
 # </executables>
-#
-# <configs>
-# </configs> 
-#
 # <output>
 ${XCHGDIR_cfg}
 # </output> 
@@ -152,8 +147,8 @@ if [ -s ${TASK_WORK}/000-000/restart ] ; then
 else
   if [ ${no_setup} = 0 ] ; then
     echo "\n##### EXECUTING TASK_SETUP #####"
-    /bin/rm -f ${TASK_BASEDIR}/.resetenv ${TASK_WORK}/.resetenv
-    ${TASK_SETUP:-task_setup-0.4.4.py} -f $CFGFILE --base $TASK_BASEDIR --clean
+    /bin/rm -rf ${TASK_BASEDIR}/.resetenv ${TASK_WORK}/.resetenv
+    ${TASK_SETUP:-task_setup-0.7.7.py} -f $CFGFILE --base $TASK_BASEDIR --clean
     if [ $? = 1 ] ; then . Um_aborthere.ksh "PROBLEM with task_setup.py" ; fi
   fi
 fi

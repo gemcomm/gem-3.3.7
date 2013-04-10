@@ -25,6 +25,7 @@
 *
 *revision
 * v3_31 - Tanguay M.    - initial MPI version
+* v3_37 - Tanguay M.    - Filtering at numerical poles
 *
 *object
 *     see id section
@@ -110,15 +111,15 @@
 *
 *     TRAJECTORY
 *     ----------
-      if (Hzd_t1_1_L) call hzd_hoffld (ut1m,  LDIST_DIM, G_nk, 1)
-      if (Hzd_t1_1_L) call hzd_hoffld (vt1m,  LDIST_DIM, G_nk, 2)
-      if (Hzd_t1_1_L) call hzd_hoffld (psdt1m,LDIST_DIM, G_nk, 3)
+      if (Hzd_t1_1_L) call hzd_hoffld (ut1m,  LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t1_1_L) call hzd_hoffld (vt1m,  LDIST_DIM, G_nk, 2, .FALSE.)
+      if (Hzd_t1_1_L) call hzd_hoffld (psdt1m,LDIST_DIM, G_nk, 3, .FALSE.)
 *
 *     TLM
 *     --- 
-      if (Hzd_t1_1_L) call hzd_hoffld (ut1,   LDIST_DIM, G_nk, 1)
-      if (Hzd_t1_1_L) call hzd_hoffld (vt1,   LDIST_DIM, G_nk, 2)
-      if (Hzd_t1_1_L) call hzd_hoffld (psdt1, LDIST_DIM, G_nk, 3)
+      if (Hzd_t1_1_L) call hzd_hoffld (ut1,   LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t1_1_L) call hzd_hoffld (vt1,   LDIST_DIM, G_nk, 2, .FALSE.)
+      if (Hzd_t1_1_L) call hzd_hoffld (psdt1, LDIST_DIM, G_nk, 3, .FALSE.)
 *
 *     -------------------------------------------------
 *     WIND EXTRAPOLATION using 2 time levels: t1 and t2

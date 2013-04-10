@@ -18,7 +18,7 @@
 *
 #include "model_macros_f.h"
 *
-      subroutine hzd_hoffld (F, DIST_DIM, Nk, grid) 
+      subroutine hzd_hoffld (F, DIST_DIM, Nk, grid, mask_L) 
 *
       implicit none
 *
@@ -26,11 +26,14 @@
 *
       real F(DIST_SHAPE,Nk)
 *
+      logical mask_L
+*
 *author
 *    M.Tanguay
 *
 *revision
 * v3_20 - Tanguay M.        - initial version
+* v3_37 - Tanguay M.        - Filtering at numerical poles  
 *
 *object
 *     see id section
@@ -51,18 +54,140 @@
 #include "geomg.cdk"
 #include "lun.cdk"
 #include "ptopo.cdk"
+#include "dcst.cdk"
 *
-      integer i, j, k, dpwr
+      integer i, j, k, dpwr, err
       real*8 wk1_8
+*
+      real F_keep(DIST_SHAPE,Nk),mask_lat(l_nj),mask_top(Nk)
+*
+      real mask(DIST_SHAPE,G_nk)
+      pointer(mask_,mask)
+      common/mask_0/mask_
+*
+      logical done_build_mask_L
+      data done_build_mask_L/.false./
+      save done_build_mask_L 
+      integer j_glob
+*
+      real*8 near_np_8 ,val_np_8 ,val_near_np_8 ,lat_near_np_8 ,lat_np_8 ,
+     %       near_top_8,val_top_8,val_near_top_8,hyb_near_top_8,hyb_top_8,
+     %       pda_8,pdb_8,pdc_8
+*
 *     __________________________________________________________________
 *
       if (.not.( Hzd_ho_L .and. Fft_fast_L .and. .not.G_lam)) 
      %   call gem_stop('HZD_HOFFLD not done for those options',-1)
 *
+      if (mask_L.and.grid.NE.3) 
+     %   call gem_stop('HZD_HOFFLD not done for mask_L.and.grid.NE.3',-1)
+*
+      if (mask_L.and..not.(Hzd_numerical_poles_mask.eq.0.or.Hzd_numerical_poles_mask.eq.1))
+     %   call gem_stop('HZD_HOFFLD not done for mask_L.and.mask NOT 0 or 1',-1)
+*
 *     __________________________________________________________________
+*
 *
       dpwr = Hzd_pwr / 2
       if (Lun_debug_L) write(Lun_out,1000) Hzd_pwr, grid 
+*
+*     -------------------------------------------
+      if (mask_L.and..NOT.done_build_mask_L) then
+*     -------------------------------------------
+*
+          if (Lun_out.gt.0) write(Lun_out,1001)  
+*
+*         Latitude (degree) to start diffusion near numerical north pole 
+*         --------------------------------------------------------------
+          lat_np_8      = G_yg_8(G_nj) 
+          lat_near_np_8 = G_yg_8(G_nj-Hzd_numerical_poles_nlat)     
+*
+          val_np_8      = 1.
+          val_near_np_8 = 0.
+*
+*         Hybrid level to start diffusion near top 
+*         ----------------------------------------
+          hyb_top_8      = Geomg_hyb(1) 
+          hyb_near_top_8 = Hzd_numerical_poles_hyb
+*
+          val_top_8      = 1.
+          val_near_top_8 = 0.
+*
+          call hpalloc(mask_,(l_maxx-l_minx+1)*(l_maxy-l_miny+1)*G_nk, err,1)
+*
+          mask(:,:,:) = 0. 
+*
+          mask_lat(:) = 0. 
+          mask_top(:) = 0. 
+*
+*         --------------------------
+*         Diffusion allowed near top  
+*         --------------------------
+          do k=1,NK
+*
+*            Fit a cubic between values val_near_top_8 and val_top_8
+*            at hyb_near_top_8 and hyb_top_8 (based on itf_phy_vlsp)
+*            -------------------------------------------------------
+             if (Geomg_hyb(k).le.hyb_near_top_8.and.Geomg_hyb(k).ge.hyb_top_8) then
+*
+                 pdb_8 =  hyb_near_top_8 - hyb_top_8
+                 pda_8 = (Geomg_hyb(k)   - hyb_top_8)/pdb_8
+                 pdc_8 = (3.-2.*pda_8)*pda_8*pda_8
+*
+                 if (Hzd_numerical_poles_mask.eq.1) then
+                     mask_top(k) = val_near_top_8 * pdc_8 + (1. - pdc_8) * val_top_8
+                 else
+                     mask_top(k) = 1. 
+                 endif
+*
+             endif
+*
+          enddo
+*
+*         --------------------------------------
+*         Diffusion allowed near numerical poles
+*         --------------------------------------
+          do j=1,l_nj
+
+             j_glob=l_j0+j-1
+*
+*             In south hemisphere, use the symmetric point 
+              if (G_yg_8(j_glob).lt.0) j_glob = G_nj - j_glob + 1 
+*
+*             Fit a cubic between values val_near_np_8 and val_np_8 
+*             at latitudes lat_near_np_8 and lat_np_8 (based on itf_phy_vlsp) 
+*             ---------------------------------------------------------------
+              if (G_yg_8(j_glob).ge.lat_near_np_8.and.G_yg_8(j_glob).le.lat_np_8) then
+*
+                  pdb_8 =  lat_np_8       - lat_near_np_8  
+                  pda_8 = (G_yg_8(j_glob) - lat_near_np_8)/pdb_8 
+                  pdc_8 = (3.-2.*pda_8)*pda_8*pda_8
+*
+                  if (Hzd_numerical_poles_mask.eq.1) then
+                      mask_lat(j) = val_np_8 * pdc_8 + (1. - pdc_8) * val_near_np_8 
+                  else
+                      mask_lat(j) = 1. 
+                  endif
+*
+              endif 
+*
+          enddo
+
+          do k=1,Nk
+            do j=1,l_nj
+               do i=1,l_ni
+                  mask(i,j,k) = mask_lat(j)*mask_top(k) 
+               enddo
+            enddo
+          enddo
+*
+          done_build_mask_L = .TRUE.
+*
+*     -----
+      endif
+*     -----
+*
+      if (mask_L) F_keep = F 
 *
 *     ------------
 *     2D diffusion
@@ -140,8 +265,20 @@
 *
       endif
 *
+      if (mask_L) then
+          do k=1,Nk
+            do j=1,l_nj
+               do i=1,l_ni
+                  F(i,j,k) = F_keep(i,j,k)*(1.-mask(i,j,k)) + F(i,j,k)*mask(i,j,k)
+               enddo
+            enddo
+          enddo
+      endif
+*
  1000 format(/,
      $  3X,'PERFORM DEL-',i1,' FFT HORIZONTAL DIFFUSION ON A GIVEN FIELD : (S/R HZD_HOFFLD) GRID=',i2)
+ 1001 format(/,'DIFFUSION AT NUMERICAL POLES USING A MASK IS ACTIVATED (S/R HZD_HOFFLD)',
+     +       /,'=======================================================================')
 *     __________________________________________________________________
 *
       return

@@ -32,6 +32,7 @@
 * v3_22 - Tanguay M.        - Change positioning of hzd_hoffld for psd 
 * v3_30 - Tanguay M.        - Change parameters of initw2 
 * v3_31 - Tanguay M.        - Change positioning of hzd_hoffld for u,v
+* v3_37 - Tanguay M.        - Filtering at numerical poles
 *
 *object
 *     see id section
@@ -181,14 +182,14 @@
 *
       if(.not.(V4dg_4dvar_L.or.V4dg_sgvc_L)) call v4d_uv2img_tr
 *
-      if (Hzd_t1_0_L) call hzd_hoffld (Indm_um,   LDIST_DIM, G_nk, 1)
-      if (Hzd_t1_0_L) call hzd_hoffld (Indm_vm,   LDIST_DIM, G_nk, 2)
+      if (Hzd_t1_0_L) call hzd_hoffld (Indm_um,   LDIST_DIM, G_nk, 1, .FALSE.)
+      if (Hzd_t1_0_L) call hzd_hoffld (Indm_vm,   LDIST_DIM, G_nk, 2, .FALSE.)
 *
 *     Compute total divergence and vertical velocity
 *     ----------------------------------------------
       call uv2tdpsd ( Indm_tdm,Indm_psdm,Indm_um,Indm_vm,Indm_sm,LDIST_DIM,l_nk )
 *
-      if (Hzd_t1_0_L) call hzd_hoffld (Indm_psdm, LDIST_DIM, G_nk, 3)
+      if (Hzd_t1_0_L) call hzd_hoffld (Indm_psdm, LDIST_DIM, G_nk, 3, .FALSE.)
 *
 *     ----------------
 *     END TRAJECTORY

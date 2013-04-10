@@ -45,6 +45,8 @@
 * v3_21 - Desgagne M.       - Revision OpenMP
 * v3_30 - Spacek L.         - Eliminate filter for condensation tendencies
 *                             and arguments F_tcond,F_qdifv
+* v3_37 - Tanguay M.        - Filtering at numerical poles
+*
 *object
 *       Apply consistency of the tendencies on physics variables
 *       with related dynamical variables. Interpolate wind
@@ -69,6 +71,8 @@
 #include "vt1.cdk"
 #include "itf_phy_busind.cdk"
 #include "v4dg.cdk"
+#include "hzd.cdk"
+#include "lctl.cdk"
 *
 *modules
       integer  vmmlod,vmmget,vmmuld
@@ -392,6 +396,22 @@ c    %    8+acid_i0,G_ni-7-acid_in,8+acid_j0,G_nj-7-acid_jn,1,G_nk)
  10      continue
 *
 !$omp end parallel
+*
+      endif
+*
+      if ( Hzd_numerical_poles_nlat.ne.0.and.Lctl_step.ne.0 ) then
+*
+         call hzd_hoffld (tpt1 , LDIST_DIM, G_nk, 3, .TRUE.)
+         call hzd_hoffld (tplt1, LDIST_DIM, G_nk, 3, .TRUE.)
+!$omp parallel do
+         do k=1,l_nk
+            do j= 1,l_nj
+            do i= 1,l_ni
+               tt1(i,j,k) = tpt1(i,j,k) + Cstv_tstr_8
+            enddo
+            enddo
+         enddo
+!$omp end parallel do
 *
       endif
 *

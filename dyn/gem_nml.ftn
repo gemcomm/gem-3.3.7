@@ -34,6 +34,7 @@
 *                             AND replaced Grdc_pil with Grdc_maxcfl 
 * v3_35 - Tanguay/Qaddouri  - Ritchie/Beaudoin estimation of positions 
 * v3_35 - Tanguay M.        - SETTLS option a la Ritchie/Girard
+* v3_37 - Tanguay M.        - Filtering at numerical poles
 *
 *object
 *  Default configuration and reading namelists gem_cfgs and grdc
@@ -189,6 +190,9 @@
       Hzd_lnr    = 0.2
       Hzd_uvwdt_L= .true.
       Hzd_rwnd_L = .false.
+      Hzd_numerical_poles_nlat = 0
+      Hzd_numerical_poles_mask = 1 
+      Hzd_numerical_poles_hyb  =.1 
       Hspng_nj = 0
       Hspng_mf = 800.
       Hspng_uvwdt_L  = .true.

@@ -22,6 +22,7 @@
 * v3_01 - Toviessi J. P.     - parity optimisation
 * v3_20 - Toviessi J. P.     - variable higher order diffusion operator
 * v3_20 - Tanguay M.         - 1d higher order diffusion operator
+* v3_37 - Tanguay M.         - Filtering at numerical poles
 *
 ***comdeck hzd.cdk
 *
@@ -67,6 +68,9 @@
 * Hzd_1d_L           | .T. if 1D diff. (otherw. 2D) for filtering      |
 * Hzd_hdif0_n_L      | .T. if hdif0    authorized (_0=NL _1=TL,AD)     |
 * Hzd_hzdmain_n_L    | .T. if hzd_main authorized (_0=NL _1=TL,AD)     |
+* Hzd_n_p_nlat       | Number of latitudes to diffuse near num. poles  |
+* Hzd_n_p_mask       | Type of mask (=0 constant, =1 cubic)            |
+* Hzd_n_p_hyb        | Lower vertical boundary of mask                 |
 *______________________________________________________________________|
 *                                                                      |
 *  PROJECTION OPERATORS FOR 1D HOR. DIFFUSION  (initialized in hzd_set)|
@@ -114,11 +118,11 @@
      %         Hzd_t1_0_L,Hzd_t1_1_L,Hzd_t0_0_L,Hzd_t0_1_L,
      %         Hzd_1d_L,Hzd_hdif0_0_L,Hzd_hdif0_1_L,
      %         Hzd_hzdmain_0_L,Hzd_hzdmain_1_L
-       integer Hzd_pwr
-       real Hzd_lnR,Hzd_cdiff
+       integer Hzd_pwr,Hzd_numerical_poles_nlat,Hzd_numerical_poles_mask
+       real Hzd_lnR,Hzd_cdiff,Hzd_numerical_poles_hyb
 *
-       common /hzdi/ Hzd_pwr
-       common /hzdr/ Hzd_lnR,Hzd_cdiff
+       common /hzdi/ Hzd_pwr,Hzd_numerical_poles_nlat,Hzd_numerical_poles_mask
+       common /hzdr/ Hzd_lnR,Hzd_cdiff,Hzd_numerical_poles_hyb
        common /hzdc/ Hzd_type_S
        common /hzdl/ Hzd_fact_L,Hzd_ho_L,Hzd_difva_L,Hzd_uvwdt_L,
      %               Hzd_t1_0_L,Hzd_t1_1_L,Hzd_t0_0_L,Hzd_t0_1_L,

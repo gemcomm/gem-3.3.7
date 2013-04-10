@@ -115,7 +115,7 @@ else
   MACH_cfg='# Um_output_mach.ksh   '`which Um_output_mach.ksh 2>/dev/null`
   RSYNC_cfg='# Um_output_rsync.ksh  '`which Um_output_rsync.ksh 2>/dev/null`
   SERI_cfg="# FESERI      $main_FESERI"
-  INDATA_cfg="# last_step_${endstep} "
+  INDATA_cfg="# last_step_${endstep} ::PWD::/last_step_::endstep::"
   DOTCFG_cfg="# configexp.cfg       ${dotcfg}"
   CFGFILE=$TMPDIR/xfer$$.cfg
   cat > $CFGFILE <<EOF
@@ -133,8 +133,6 @@ ${MACH_cfg}
 ${RSYNC_cfg}
 ${SERI_cfg}
 # </executables>
-# <configs>
-# </configs>
 # <output>
 # </output>
 #############################################
@@ -145,7 +143,8 @@ echo "### Content of config file to TASK_SETUP ####"
 cat $CFGFILE 2>/dev/null
 
 echo "\n##### EXECUTING TASK_SETUP #####"
-${TASK_SETUP:-task_setup-0.4.4.py} -f $CFGFILE --base $TASK_BASEDIR
+/bin/rm -rf ${TASK_BASEDIR}/.setup
+${TASK_SETUP:-task_setup-0.7.7.py} -f $CFGFILE --base $TASK_BASEDIR
 if [ $? -ne 0 ] ; then exit 1 ; fi
 echo "\n#############################################\n"
 /bin/rm -f $CFGFILE
